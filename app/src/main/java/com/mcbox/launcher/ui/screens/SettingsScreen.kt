@@ -1,5 +1,10 @@
 package com.mcbox.launcher.ui.screens
 
+import android.content.Intent
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -9,19 +14,25 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -34,6 +45,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.mcbox.core.GamePaths
+import com.mcbox.core.install.MirrorCatalog
+import com.mcbox.launcher.data.GameDirs
 import com.mcbox.launcher.data.SettingsStore
 import com.mcbox.launcher.runtime.RuntimeManager
 import kotlinx.coroutines.Dispatchers
@@ -52,19 +65,23 @@ fun SettingsScreen() {
     var zink by remember { mutableStateOf(settings.zink) }
     var vsync by remember { mutableStateOf(settings.vsync) }
     var bigCore by remember { mutableStateOf(settings.bigCore) }
-    var source by remember { mutableStateOf(settings.downloadSource) }
+    var mirrorId by remember { mutableStateOf(settings.downloadSource) }
+    var customMirror by remember { mutableStateOf(settings.customMirrorBase) }
+    var gameRoot by remember { mutableStateOf(settings.gameRoot) }
     var runtimes by remember { mutableStateOf<List<String>>(emptyList()) }
     var installing by remember { mutableStateOf(false) }
     var installLog by remember { mutableStateOf("") }
+    var showDirDialog by remember { mutableStateOf(false) }
+    var dirInput by remember { mutableStateOf(settings.gameRoot) }
 
-    val paths = remember { GamePaths(File(settings.gameRoot)).ensure() }
-    val runtimeManager = remember { RuntimeManager(context, paths.runtimes) }
+    val paths = remember(gameRoot) { GamePaths(File(gameRoot)).ensure() }
+    val runtimeManager = remember(context, gameRoot) { RuntimeManager(context, paths.runtimes) }
 
     fun refreshRuntimes() {
         runtimes = runtimeManager.listInstalled().map { "Java ${it.javaMajor}" }
     }
 
-    androidx.compose.runtime.LaunchedEffect(Unit) { refreshRuntimes() }
+    LaunchedEffect(gameRoot) { refreshRuntimes() }
 
     LazyColumn(
         Modifier.fillMaxSize(),
@@ -81,8 +98,83 @@ fun SettingsScreen() {
         }
 
         item {
+            SettingCard("游戏目录") {
+                Text(
+                    gameRoot,
+                    fontSize = 11.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(Modifier.height(10.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(onClick = { dirInput = gameRoot; showDirDialog = true }) {
+                        Text("更改目录")
+                    }
+                }
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    if (GameDirs.isUsable(File(gameRoot))) "可写" else "不可写，请换目录",
+                    fontSize = 11.sp,
+                    color = if (GameDirs.isUsable(File(gameRoot)))
+                        MaterialTheme.colorScheme.primary
+                    else MaterialTheme.colorScheme.error
+                )
+            }
+        }
+
+        item {
+            SettingCard("下载镜像") {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    MirrorCatalog.all(customMirror).forEach { mirror ->
+                        Row(
+                            Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    mirrorId = mirror.id
+                                    settings.downloadSource = mirror.id
+                                },
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                mirror.name,
+                                fontSize = 13.sp,
+                                color = MaterialTheme.colorScheme.onSurface,
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .padding(vertical = 6.dp)
+                            )
+                            if (mirrorId == mirror.id) {
+                                Icon(
+                                    Icons.Default.Check,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary
+                                )
+                            }
+                        }
+                    }
+                }
+                if (mirrorId == MirrorCatalog.CUSTOM) {
+                    Spacer(Modifier.height(8.dp))
+                    OutlinedTextField(
+                        value = customMirror,
+                        onValueChange = {
+                            customMirror = it
+                            settings.customMirrorBase = it
+                        },
+                        label = { Text("镜像根地址") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            }
+        }
+
+        item {
             SettingCard("内存") {
-                Text("${memory.toInt()} MB", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurface)
+                Text(
+                    "${memory.toInt()} MB",
+                    fontSize = 13.sp,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
                 Slider(
                     value = memory,
                     onValueChange = { memory = it },
@@ -96,7 +188,7 @@ fun SettingsScreen() {
         item {
             SettingCard("渲染器") {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    listOf("opengles3" to "GL4ES", "opengles3_ltw" to "LTW", "virgl" to "VirGL").forEach { (key, label) ->
+                    listOf("opengles3" to "GL4ES", "opengles3_ltw" to "LTW").forEach { (key, label) ->
                         FilterChip(
                             selected = renderer == key,
                             onClick = {
@@ -104,7 +196,6 @@ fun SettingsScreen() {
                                 settings.renderer = key
                                 settings.rendererLibrary = when (key) {
                                     "opengles3_ltw" -> "libltw.so"
-                                    "virgl" -> "libltw.so"
                                     else -> "libgl4es_114.so"
                                 }
                             },
@@ -124,23 +215,6 @@ fun SettingsScreen() {
                 ToggleRow("大核优先", bigCore) {
                     bigCore = it
                     settings.bigCore = it
-                }
-            }
-        }
-
-        item {
-            SettingCard("下载源") {
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    listOf("Auto" to "自动", "Official" to "官方", "Mirror" to "镜像").forEach { (key, label) ->
-                        FilterChip(
-                            selected = source == key,
-                            onClick = {
-                                source = key
-                                settings.downloadSource = key
-                            },
-                            label = { Text(label) }
-                        )
-                    }
                 }
             }
         }
@@ -179,21 +253,40 @@ fun SettingsScreen() {
                         },
                         enabled = !installing
                     ) { Text("安装 Java 21") }
+                    OutlinedButton(
+                        onClick = {
+                            scope.launch {
+                                installing = true
+                                installLog = "解压 Java 8"
+                                try {
+                                    withContext(Dispatchers.IO) {
+                                        runtimeManager.installFromAssets(
+                                            name = "jre-8",
+                                            universalAsset = "runtime/jre8/universal.tar.xz",
+                                            binAsset = "runtime/jre8/bin-arm64.tar.xz"
+                                        ) { stage, pct ->
+                                            installLog = "$stage $pct%"
+                                        }
+                                    }
+                                    installLog = "安装完成"
+                                    refreshRuntimes()
+                                } catch (t: Throwable) {
+                                    installLog = "失败: ${t.message}"
+                                }
+                                installing = false
+                            }
+                        },
+                        enabled = !installing
+                    ) { Text("安装 Java 8") }
                 }
                 if (installLog.isNotEmpty()) {
                     Spacer(Modifier.height(8.dp))
-                    Text(installLog, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(
+                        installLog,
+                        fontSize = 11.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                 }
-            }
-        }
-
-        item {
-            SettingCard("游戏目录") {
-                Text(
-                    settings.gameRoot,
-                    fontSize = 11.sp,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
             }
         }
 
@@ -208,6 +301,68 @@ fun SettingsScreen() {
                 )
             }
         }
+    }
+
+    if (showDirDialog) {
+        AlertDialog(
+            onDismissRequest = { showDirDialog = false },
+            title = { Text("游戏目录") },
+            text = {
+                Column {
+                    GameDirs.candidates(context).forEach { (label, dir) ->
+                        Row(
+                            Modifier
+                                .fillMaxWidth()
+                                .clickable { dirInput = dir.absolutePath },
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(
+                                Modifier
+                                    .weight(1f)
+                                    .padding(vertical = 8.dp)
+                            ) {
+                                Text(label, fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurface)
+                                Text(
+                                    dir.absolutePath,
+                                    fontSize = 10.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            if (dirInput == dir.absolutePath) {
+                                Icon(
+                                    Icons.Default.Check,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary
+                                )
+                            }
+                        }
+                    }
+                    Spacer(Modifier.height(10.dp))
+                    OutlinedTextField(
+                        value = dirInput,
+                        onValueChange = { dirInput = it },
+                        label = { Text("自定义路径") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    val target = File(dirInput.trim())
+                    if (GameDirs.isUsable(target)) {
+                        settings.gameRoot = target.absolutePath
+                        gameRoot = target.absolutePath
+                        showDirDialog = false
+                    } else {
+                        installLog = "目录不可写: $dirInput"
+                    }
+                }) { Text("应用") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDirDialog = false }) { Text("取消") }
+            }
+        )
     }
 }
 
@@ -237,7 +392,12 @@ private fun ToggleRow(label: String, checked: Boolean, onChange: (Boolean) -> Un
         Modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Text(label, fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurface, modifier = Modifier.weight(1f))
+        Text(
+            label,
+            fontSize = 13.sp,
+            color = MaterialTheme.colorScheme.onSurface,
+            modifier = Modifier.weight(1f)
+        )
         Switch(checked = checked, onCheckedChange = onChange)
     }
 }

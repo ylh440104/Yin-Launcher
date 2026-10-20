@@ -6,12 +6,38 @@ on:
   workflow_dispatch:
 
 jobs:
-  build:
+  prepare:
     runs-on: ubuntu-latest
-    timeout-minutes: 90
+    timeout-minutes: 30
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - name: Cache Pojav payload
+        id: cache
+        uses: actions/cache@v4
+        with:
+          path: payload
+          key: pojav-payload-gladiolus-v1
+
+      - name: Fetch payload
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: |
+          set -e
+          mkdir -p payload
+          curl -L --retry 3 --retry-delay 3 -o payload/pojav.apk \
+            https://github.com/PojavLauncherTeam/PojavLauncher/releases/download/gladiolus/PojavLauncher.apk
+          ls -la payload/pojav.apk
+
+      - name: Upload payload
+        uses: actions/upload-artifact@v4
+        with:
+          name: pojav-payload
+          path: payload/pojav.apk
+          retention-days: 3
+
+  core-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4
@@ -24,44 +50,68 @@ jobs:
         with:
           gradle-version: '8.11.1'
 
-      - name: Show SDK
-        run: |
-          echo "ANDROID_HOME=$ANDROID_HOME"
-          echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT"
-          ls "$ANDROID_HOME" || true
-          ls "$ANDROID_HOME/platforms" || true
-          ls "$ANDROID_HOME/build-tools" || true
+      - name: Run core tests
+        run: gradle :core:test --stacktrace --no-daemon --info 2>&1 | tail -120
 
-      - name: Fetch native libraries
+      - name: Upload test report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: core-test-report
+          path: core/build/reports/tests/**
+          retention-days: 14
+          if-no-files-found: ignore
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: core-test-results
+          path: core/build/test-results/**
+          retention-days: 14
+          if-no-files-found: ignore
+
+  build:
+    needs: prepare
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.11.1'
+
+      - name: Download payload
+        uses: actions/download-artifact@v4
+        with:
+          name: pojav-payload
+          path: payload
+
+      - name: Prepare natives and components
         run: |
           set -e
-          mkdir -p app/src/main/jniLibs/arm64-v8a
-          curl -L --retry 3 --retry-delay 2 \
-            -o pojav.apk \
-            https://github.com/PojavLauncherTeam/PojavLauncher/releases/download/gladiolus/PojavLauncher.apk
-          ls -la pojav.apk
-          mkdir -p extract
-          unzip -o -q pojav.apk 'lib/arm64-v8a/*' -d extract
-          cp extract/lib/arm64-v8a/*.so app/src/main/jniLibs/arm64-v8a/
-          ls app/src/main/jniLibs/arm64-v8a
-
-      - name: Fetch components
-        run: |
-          set -e
-          mkdir -p app/src/main/assets/components
-          unzip -o -q pojav.apk 'assets/components/*' -d extract
-          cp -r extract/assets/components/lwjgl3 app/src/main/assets/components/
-          cp -r extract/assets/components/caciocavallo17 app/src/main/assets/components/
-          cp -r extract/assets/components/security app/src/main/assets/components/
+          mkdir -p app/src/main/jniLibs/arm64-v8a app/src/main/assets/components
           mkdir -p app/src/main/assets/runtime/jre21 app/src/main/assets/runtime/jre8
-          cp extract/assets/components/jre-21/universal.tar.xz app/src/main/assets/runtime/jre21/
-          cp extract/assets/components/jre-21/bin-arm64.tar.xz app/src/main/assets/runtime/jre21/
-          cp extract/assets/components/jre/universal.tar.xz app/src/main/assets/runtime/jre8/
-          cp extract/assets/components/jre/bin-arm64.tar.xz app/src/main/assets/runtime/jre8/
+          unzip -o -q payload/pojav.apk 'lib/arm64-v8a/*' -d payload/extract
+          cp payload/extract/lib/arm64-v8a/*.so app/src/main/jniLibs/arm64-v8a/
+          unzip -o -q payload/pojav.apk 'assets/components/*' -d payload/extract
+          cp -r payload/extract/assets/components/lwjgl3 app/src/main/assets/components/
+          cp -r payload/extract/assets/components/caciocavallo17 app/src/main/assets/components/
+          cp -r payload/extract/assets/components/security app/src/main/assets/components/
+          cp payload/extract/assets/components/jre-21/universal.tar.xz app/src/main/assets/runtime/jre21/
+          cp payload/extract/assets/components/jre-21/bin-arm64.tar.xz app/src/main/assets/runtime/jre21/
+          cp payload/extract/assets/components/jre/universal.tar.xz app/src/main/assets/runtime/jre8/
+          cp payload/extract/assets/components/jre/bin-arm64.tar.xz app/src/main/assets/runtime/jre8/
+          ls app/src/main/jniLibs/arm64-v8a
           du -sh app/src/main/assets/runtime/*
-
-      - name: Compile core module
-        run: gradle :core:compileKotlin --stacktrace --no-daemon
 
       - name: Build debug APK
         run: gradle :app:assembleDebug --stacktrace --no-daemon
@@ -72,7 +122,7 @@ jobs:
           name: mcbox-debug-apk
           path: app/build/outputs/apk/debug/*.apk
           retention-days: 30
-          if-no-files-found: warn
+          if-no-files-found: error
 
       - name: Upload build reports
         if: failure()
@@ -83,4 +133,69 @@ jobs:
             app/build/reports/**
             core/build/reports/**
           retention-days: 7
+          if-no-files-found: ignore
+
+  device-test:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Download APK
+        uses: actions/download-artifact@v4
+        with:
+          name: mcbox-debug-apk
+          path: apk
+
+      - name: Enable KVM
+        run: |
+          sudo chmod 666 /dev/kvm || true
+          ls -la /dev/kvm || true
+
+      - name: Run emulator
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 30
+          target: google_apis
+          arch: arm64-v8a
+          profile: pixel_5
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -no-audio -no-boot-anim -camera-back none -camera-front none
+          script: |
+            adb wait-for-device
+            adb shell settings put global window_animation_scale 0 || true
+            adb install -r -t apk/app-debug.apk
+            adb shell appops set com.mcbox.launcher MANAGE_EXTERNAL_STORAGE allow || true
+            adb shell pm grant com.mcbox.launcher android.permission.READ_EXTERNAL_STORAGE || true
+            adb shell pm grant com.mcbox.launcher android.permission.WRITE_EXTERNAL_STORAGE || true
+            adb logcat -c
+            adb shell am start -n com.mcbox.launcher/.ui.MainActivity
+            sleep 20
+            adb shell uiautomator dump /sdcard/ui.xml
+            adb pull /sdcard/ui.xml ui.xml
+            echo "=== UI dump ==="
+            cat ui.xml | head -c 3000
+            echo
+            adb shell dumpsys activity activities | grep -i "mcbox" | head -10 || true
+            adb logcat -d -s AndroidRuntime:E | tail -40 || true
+            PID=$(adb shell pidof com.mcbox.launcher)
+            echo "pid=$PID"
+            if [ -z "$PID" ]; then exit 1; fi
+            if grep -q "AndroidRuntime" ui.xml; then exit 1; fi
+
+      - name: Collect logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: device-logs
+          path: |
+            ui.xml
+          retention-days: 14
           if-no-files-found: ignore

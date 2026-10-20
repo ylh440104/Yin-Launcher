@@ -1,6 +1,8 @@
 package com.mcbox.launcher.data
 
 import android.content.Context
+import com.mcbox.core.install.Mirror
+import com.mcbox.core.install.MirrorCatalog
 import com.mcbox.core.model.Account
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
@@ -126,10 +128,27 @@ class SettingsStore(context: Context) {
         }
 
     var downloadSource: String
-        get() = prefs.getString("download_source", "Auto") ?: "Auto"
+        get() = prefs.getString("mirror_id", MirrorCatalog.OFFICIAL) ?: MirrorCatalog.OFFICIAL
         set(value) {
-            prefs.edit().putString("download_source", value).apply()
+            prefs.edit().putString("mirror_id", value).apply()
         }
+
+    var customMirrorBase: String
+        get() = prefs.getString("custom_mirror", "") ?: ""
+        set(value) {
+            prefs.edit().putString("custom_mirror", value).apply()
+        }
+
+    fun mirrors(): List<Mirror> {
+        val chosen = MirrorCatalog.byId(downloadSource, customMirrorBase)
+        if (chosen.manifestUrl.isEmpty()) {
+            return MirrorCatalog.presets
+        }
+        val rest = MirrorCatalog.presets.filter { it.id != chosen.id }
+        return listOf(chosen) + rest
+    }
+
+    fun activeMirror(): Mirror = mirrors().first()
 
     var javaMajorDefault: Int
         get() = prefs.getInt("java_major_default", 17)

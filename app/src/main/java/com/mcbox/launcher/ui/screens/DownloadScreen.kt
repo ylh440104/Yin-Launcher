@@ -11,17 +11,16 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -46,12 +45,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.mcbox.core.GamePaths
-import com.mcbox.core.install.DownloadSource
 import com.mcbox.core.install.InstallProgress
+import com.mcbox.core.install.Mirror
 import com.mcbox.core.install.ProgressListener
 import com.mcbox.core.install.VersionInstaller
 import com.mcbox.core.loader.FabricInstaller
@@ -81,17 +79,20 @@ fun DownloadScreen() {
     var busy by remember { mutableStateOf(false) }
     var log by remember { mutableStateOf("") }
     var loaderDialog by remember { mutableStateOf<VersionManifest.VersionSummary?>(null) }
+    var mirrorDialog by remember { mutableStateOf(false) }
+    var mirrorId by remember { mutableStateOf(settings.downloadSource) }
 
-    fun source(): DownloadSource = when (settings.downloadSource) {
-        "Official" -> DownloadSource.Official
-        "Mirror" -> DownloadSource.Mirror
-        else -> DownloadSource.Auto
-    }
+    fun mirrorList(): List<Mirror> = settings.mirrors()
 
-    LaunchedEffect(Unit) {
+    LaunchedEffect(mirrorId, settings.customMirrorBase) {
+        loading = true
+        error = null
         try {
             manifest = withContext(Dispatchers.IO) {
-                VersionInstaller(GamePaths(File(settings.gameRoot)).ensure(), source = source()).fetchManifest()
+                VersionInstaller(
+                    GamePaths(File(settings.gameRoot)).ensure(),
+                    mirrors = mirrorList()
+                ).fetchManifest()
             }
         } catch (t: Throwable) {
             error = t.message
@@ -100,13 +101,27 @@ fun DownloadScreen() {
     }
 
     Column(Modifier.fillMaxSize()) {
-        Text(
-            "下载",
-            fontSize = 24.sp,
-            fontWeight = FontWeight.Bold,
-            color = MaterialTheme.colorScheme.onBackground,
-            modifier = Modifier.padding(16.dp)
-        )
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text(
+                    "下载",
+                    fontSize = 24.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onBackground
+                )
+                Text(
+                    "镜像 " + settings.activeMirror().name,
+                    fontSize = 11.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            TextButton(onClick = { mirrorDialog = true }) { Text("切换镜像") }
+        }
 
         OutlinedTextField(
             value = query,
@@ -130,11 +145,22 @@ fun DownloadScreen() {
         if (busy && progress != null) {
             val p = progress!!
             Column(Modifier.padding(16.dp)) {
-                Text("${p.stage}  ${p.detail}", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(
+                    "${p.stage}  ${p.detail}",
+                    fontSize = 12.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
                 Spacer(Modifier.height(6.dp))
-                LinearProgressIndicator(progress = { p.fraction }, modifier = Modifier.fillMaxWidth())
+                LinearProgressIndicator(
+                    progress = { p.fraction },
+                    modifier = Modifier.fillMaxWidth()
+                )
                 Spacer(Modifier.height(4.dp))
-                Text("${p.current} / ${p.total}", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(
+                    "${p.current} / ${p.total}",
+                    fontSize = 11.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
                 if (log.isNotEmpty()) {
                     Text(log, fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
@@ -145,31 +171,42 @@ fun DownloadScreen() {
             loading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 CircularProgressIndicator()
             }
+
             error != null -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Text("获取版本列表失败", color = MaterialTheme.colorScheme.error)
                     Spacer(Modifier.height(8.dp))
-                    Text(error!!, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(
+                        error!!,
+                        fontSize = 11.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                     Spacer(Modifier.height(12.dp))
-                    Button(onClick = {
-                        scope.launch {
-                            loading = true
-                            error = null
-                            try {
-                                manifest = withContext(Dispatchers.IO) {
-                                    VersionInstaller(
-                                        GamePaths(File(settings.gameRoot)).ensure(),
-                                        source = source()
-                                    ).fetchManifest()
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Button(onClick = {
+                            mirrorId = mirrorId + ""
+                            val bump = System.currentTimeMillis()
+                            scope.launch {
+                                loading = true
+                                error = null
+                                try {
+                                    manifest = withContext(Dispatchers.IO) {
+                                        VersionInstaller(
+                                            GamePaths(File(settings.gameRoot)).ensure(),
+                                            mirrors = mirrorList()
+                                        ).fetchManifest()
+                                    }
+                                } catch (t: Throwable) {
+                                    error = t.message
                                 }
-                            } catch (t: Throwable) {
-                                error = t.message
+                                loading = false
                             }
-                            loading = false
-                        }
-                    }) { Text("重试") }
+                        }) { Text("重试") }
+                        TextButton(onClick = { mirrorDialog = true }) { Text("换镜像") }
+                    }
                 }
             }
+
             else -> {
                 val all = manifest?.versions.orEmpty()
                 val filtered = when (tab) {
@@ -179,7 +216,7 @@ fun DownloadScreen() {
                 }.filter { query.isBlank() || it.id.contains(query, ignoreCase = true) }
 
                 if (tab == 2) {
-                    InstalledList(instanceStore, settings)
+                    InstalledList(settings)
                 } else {
                     LazyColumn(
                         Modifier.fillMaxSize(),
@@ -199,7 +236,21 @@ fun DownloadScreen() {
         }
     }
 
-    if (loaderDialog != null && manifest != null) {
+    if (mirrorDialog) {
+        MirrorDialog(
+            current = settings.downloadSource,
+            customBase = settings.customMirrorBase,
+            onDismiss = { mirrorDialog = false },
+            onPick = { id, custom ->
+                settings.downloadSource = id
+                settings.customMirrorBase = custom
+                mirrorId = id
+                mirrorDialog = false
+            }
+        )
+    }
+
+    if (loaderDialog != null) {
         val summary = loaderDialog!!
         InstallDialog(
             summary = summary,
@@ -208,6 +259,7 @@ fun DownloadScreen() {
                 loaderDialog = null
                 scope.launch {
                     busy = true
+                    log = ""
                     progress = InstallProgress("准备", 0, 0, "")
                     try {
                         withContext(Dispatchers.IO) {
@@ -218,20 +270,100 @@ fun DownloadScreen() {
                                 loaderVersion = loaderVersion,
                                 versionName = versionName,
                                 instanceStore = instanceStore,
-                                source = source(),
                                 onProgress = { p -> progress = p },
-                                onLog = { log = it }
+                                onLog = { line -> log = line }
                             )
                         }
+                        progress = InstallProgress("完成", 1, 1, versionName)
                     } catch (t: Throwable) {
                         log = "失败: ${t.message}"
                     }
                     busy = false
-                    progress = null
                 }
             }
         )
     }
+}
+
+@Composable
+private fun MirrorDialog(
+    current: String,
+    customBase: String,
+    onDismiss: () -> Unit,
+    onPick: (String, String) -> Unit
+) {
+    var selected by remember { mutableStateOf(current) }
+    var custom by remember { mutableStateOf(customBase) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("选择下载镜像") },
+        text = {
+            Column {
+                com.mcbox.core.install.MirrorCatalog.all(custom).forEach { mirror ->
+                    Card(
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 4.dp)
+                            .clickable { selected = mirror.id },
+                        shape = RoundedCornerShape(10.dp),
+                        colors = CardDefaults.cardColors(
+                            containerColor = if (selected == mirror.id)
+                                MaterialTheme.colorScheme.primaryContainer
+                            else MaterialTheme.colorScheme.surfaceVariant
+                        )
+                    ) {
+                        Row(
+                            Modifier
+                                .fillMaxWidth()
+                                .padding(12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(Modifier.weight(1f)) {
+                                Text(
+                                    mirror.name,
+                                    fontSize = 14.sp,
+                                    fontWeight = FontWeight.Medium,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                                if (mirror.description.isNotEmpty()) {
+                                    Text(
+                                        mirror.description,
+                                        fontSize = 10.sp,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+                            if (selected == mirror.id) {
+                                Icon(
+                                    Icons.Default.Check,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary
+                                )
+                            }
+                        }
+                    }
+                }
+                if (selected == com.mcbox.core.install.MirrorCatalog.CUSTOM) {
+                    Spacer(Modifier.height(8.dp))
+                    OutlinedTextField(
+                        value = custom,
+                        onValueChange = { custom = it },
+                        label = { Text("镜像根地址") },
+                        placeholder = { Text("https://example.com") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = { onPick(selected, custom) }) { Text("确定") }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("取消") }
+        }
+    )
 }
 
 @Composable
@@ -254,7 +386,12 @@ private fun VersionRow(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Column(Modifier.weight(1f)) {
-                Text(version.id, fontSize = 15.sp, fontWeight = FontWeight.Medium, color = MaterialTheme.colorScheme.onSurface)
+                Text(
+                    version.id,
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
                 Text(
                     version.type,
                     fontSize = 11.sp,
@@ -271,11 +408,15 @@ private fun VersionRow(
 }
 
 @Composable
-private fun InstalledList(store: InstanceStore, settings: SettingsStore) {
-    val context = LocalContext.current
-    val paths = remember { GamePaths(File(settings.gameRoot)).ensure() }
-    val versions = remember {
-        paths.versions.listFiles()?.filter { it.isDirectory }?.map { it.name }?.sorted()?.reversed().orEmpty()
+private fun InstalledList(settings: SettingsStore) {
+    val paths = remember(settings.gameRoot) { GamePaths(File(settings.gameRoot)).ensure() }
+    val versions = remember(settings.gameRoot) {
+        paths.versions.listFiles()
+            ?.filter { it.isDirectory }
+            ?.map { it.name }
+            ?.sorted()
+            ?.reversed()
+            .orEmpty()
     }
     if (versions.isEmpty()) {
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -294,8 +435,17 @@ private fun InstalledList(store: InstanceStore, settings: SettingsStore) {
                 shape = RoundedCornerShape(12.dp),
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
             ) {
-                Row(Modifier.fillMaxWidth().padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Default.Check, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(14.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        Icons.Default.Check,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary
+                    )
                     Spacer(Modifier.width(12.dp))
                     Text(id, color = MaterialTheme.colorScheme.onSurface)
                 }
@@ -315,34 +465,39 @@ private fun InstallDialog(
     var versionName by remember { mutableStateOf(summary.id) }
     var loaderVersions by remember { mutableStateOf<List<String>>(emptyList()) }
     var loadingLoaders by remember { mutableStateOf(false) }
-    val scope = rememberCoroutineScope()
 
     LaunchedEffect(loader, summary.id) {
-        if (loader == "fabric") {
-            loadingLoaders = true
-            loaderVersions = try {
-                withContext(Dispatchers.IO) {
-                    FabricInstaller().listLoaderVersions(summary.id).map { it.version }
+        when (loader) {
+            "fabric" -> {
+                loadingLoaders = true
+                loaderVersions = try {
+                    withContext(Dispatchers.IO) {
+                        FabricInstaller().listLoaderVersions(summary.id).map { it.version }
+                    }
+                } catch (t: Throwable) {
+                    emptyList()
                 }
-            } catch (t: Throwable) {
-                emptyList()
+                loaderVersion = loaderVersions.firstOrNull() ?: ""
+                loadingLoaders = false
             }
-            loaderVersion = loaderVersions.firstOrNull() ?: ""
-            loadingLoaders = false
-        } else if (loader == "quilt") {
-            loadingLoaders = true
-            loaderVersions = try {
-                withContext(Dispatchers.IO) {
-                    QuiltInstaller().listLoaderVersions(summary.id).map { it.version }
+
+            "quilt" -> {
+                loadingLoaders = true
+                loaderVersions = try {
+                    withContext(Dispatchers.IO) {
+                        QuiltInstaller().listLoaderVersions(summary.id).map { it.version }
+                    }
+                } catch (t: Throwable) {
+                    emptyList()
                 }
-            } catch (t: Throwable) {
-                emptyList()
+                loaderVersion = loaderVersions.firstOrNull() ?: ""
+                loadingLoaders = false
             }
-            loaderVersion = loaderVersions.firstOrNull() ?: ""
-            loadingLoaders = false
-        } else {
-            loaderVersions = emptyList()
-            loaderVersion = ""
+
+            else -> {
+                loaderVersions = emptyList()
+                loaderVersion = ""
+            }
         }
     }
 
@@ -372,7 +527,11 @@ private fun InstallDialog(
                 }
                 if (loaderVersions.isNotEmpty()) {
                     Spacer(Modifier.height(10.dp))
-                    Text("加载器版本", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(
+                        "加载器版本",
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                     Spacer(Modifier.height(6.dp))
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         loaderVersions.take(3).forEach { v ->
@@ -386,7 +545,7 @@ private fun InstallDialog(
                 }
                 if (loadingLoaders) {
                     Spacer(Modifier.height(8.dp))
-                    CircularProgressIndicator(Modifier.height(16.dp).width(16.dp))
+                    CircularProgressIndicator(Modifier.size(16.dp))
                 }
             }
         },
@@ -408,12 +567,11 @@ private fun installVersion(
     loaderVersion: String,
     versionName: String,
     instanceStore: InstanceStore,
-    source: DownloadSource,
     onProgress: (InstallProgress) -> Unit,
     onLog: (String) -> Unit
 ) {
     val paths = GamePaths(File(settings.gameRoot)).ensure()
-    val installer = VersionInstaller(paths, source = source)
+    val installer = VersionInstaller(paths, mirrors = settings.mirrors())
     val listener = object : ProgressListener {
         override fun onProgress(progress: InstallProgress) = onProgress(progress)
         override fun onLog(line: String) = onLog(line)
@@ -421,23 +579,21 @@ private fun installVersion(
 
     installer.install(summary.id, summary.url, listener, includeAssets = true)
 
+    var targetId = summary.id
+
     if (loader == "fabric" && loaderVersion.isNotEmpty()) {
         onProgress(InstallProgress("安装 Fabric", 0, 1, loaderVersion))
         val profile = FabricInstaller().saveProfileJson(summary.id, loaderVersion, paths.versions)
-        onProgress(InstallProgress("安装 Fabric", 1, 1, profile.name))
+        targetId = profile.nameWithoutExtension
+        onProgress(InstallProgress("安装 Fabric", 1, 1, targetId))
     } else if (loader == "quilt" && loaderVersion.isNotEmpty()) {
         onProgress(InstallProgress("安装 Quilt", 0, 1, loaderVersion))
         val profile = QuiltInstaller().saveProfileJson(summary.id, loaderVersion, paths.versions)
-        onProgress(InstallProgress("安装 Quilt", 1, 1, profile.name))
+        targetId = profile.nameWithoutExtension
+        onProgress(InstallProgress("安装 Quilt", 1, 1, targetId))
     }
 
     val resolver = com.mcbox.core.launch.VersionResolver(paths)
-    val targetId = if (loader == "vanilla" || loaderVersion.isEmpty()) summary.id
-    else {
-        val prefix = if (loader == "fabric") "fabric-loader-$loaderVersion-" else "quilt-loader-$loaderVersion-"
-        paths.versions.listFiles()?.firstOrNull { it.name.startsWith(prefix) && it.name.endsWith(summary.id) }?.name
-            ?: summary.id
-    }
     val javaMajor = try {
         resolver.requiredJavaMajor(resolver.loadMerged(targetId))
     } catch (t: Throwable) {
