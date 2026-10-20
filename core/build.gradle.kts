@@ -1,7 +1,6 @@
 plugins {
     id("org.jetbrains.kotlin.jvm")
-    id("org.jetbrains.kotlin.plugin.serialization") version "2.0.21"
-    `java-library`
+    id("org.jetbrains.kotlin.plugin.serialization")
 }
 
 java {
@@ -21,7 +20,4 @@ dependencies {
 
 tasks.test {
     useJUnitPlatform()
-    testLogging {
-        events("passed", "failed", "skipped")
-    }
 }
