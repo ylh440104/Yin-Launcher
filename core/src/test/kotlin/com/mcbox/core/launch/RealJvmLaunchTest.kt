@@ -112,10 +112,12 @@ class RealJvmLaunchTest {
         assertEquals(256, command.memoryMb())
 
         val resultFile = File(temp, "result.txt")
-        val pb = ProcessBuilder(command.toCommandLine())
+        val javaBin = File(System.getProperty("java.home"), "bin/java").absolutePath
+        val commandLine = command.toCommandLine().toMutableList()
+        commandLine.add(1, "-Dmcbox.out=${resultFile.absolutePath}")
+        val pb = ProcessBuilder(commandLine)
         pb.directory(gameDir)
         pb.redirectErrorStream(true)
-        pb.environment()["mcbox.out"] = resultFile.absolutePath
         val process = pb.start()
         val output = process.inputStream.bufferedReader().readText()
         assertTrue(process.waitFor(180, TimeUnit.SECONDS), "jvm hung")

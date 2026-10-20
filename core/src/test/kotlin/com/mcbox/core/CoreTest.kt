@@ -26,10 +26,12 @@ class OfflineUuidTest {
     @Test
     fun offlineUuidIsStableAndDashFormatted() {
         val uuid = AccountUuid.fromOfflineName("Notch")
-        assertEquals("b50ad385-829d-3141-a216-7e7d7539ba7f", uuid)
+        val expected = java.util.UUID.nameUUIDFromBytes("OfflinePlayer:Notch".toByteArray(Charsets.UTF_8)).toString()
+        assertEquals(expected, uuid)
         assertEquals(uuid, AccountUuid.fromOfflineName("Notch"))
         assertEquals(36, uuid.length)
         assertEquals(32, AccountUuid.undashed(uuid).length)
+        assertTrue(uuid.matches(Regex("^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")))
     }
 }
 

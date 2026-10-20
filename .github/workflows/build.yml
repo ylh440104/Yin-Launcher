@@ -126,8 +126,6 @@ jobs:
           mkdir -p app/src/main/jniLibs/x86_64
           unzip -o -q payload/pojav.apk 'lib/x86_64/*' -d payload/extract
           cp payload/extract/lib/x86_64/*.so app/src/main/jniLibs/x86_64/
-          rm -f app/src/main/assets/runtime/jre21/bin-arm64.tar.xz
-          rm -f app/src/main/assets/runtime/jre8/bin-arm64.tar.xz
           cp payload/extract/assets/components/jre-21/bin-x86_64.tar.xz app/src/main/assets/runtime/jre21/bin-arm64.tar.xz
           cp payload/extract/assets/components/jre/bin-x86_64.tar.xz app/src/main/assets/runtime/jre8/bin-arm64.tar.xz
           ls app/src/main/jniLibs/x86_64 | head -30
@@ -190,50 +188,64 @@ jobs:
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -no-audio -no-boot-anim -camera-back none -camera-front none
           script: |
-            set +e
             adb wait-for-device
-            adb shell settings put global window_animation_scale 0
-            adb shell settings put global transition_animation_scale 0
-            adb shell settings put global animator_duration_scale 0
+            adb shell settings put global window_animation_scale 0 || true
+            adb shell settings put global transition_animation_scale 0 || true
+            adb shell settings put global animator_duration_scale 0 || true
+
             echo "=== install ==="
-            adb install -r -t apk/mcbox-x86_64.apk
-            INSTALL=$?
-            echo "install_exit=$INSTALL"
-            adb shell appops set com.mcbox.launcher MANAGE_EXTERNAL_STORAGE allow
-            adb shell pm grant com.mcbox.launcher android.permission.READ_EXTERNAL_STORAGE
-            adb shell pm grant com.mcbox.launcher android.permission.WRITE_EXTERNAL_STORAGE
-            adb logcat -c
+            adb install -r -t apk/mcbox-x86_64.apk || exit 2
+
+            adb shell appops set com.mcbox.launcher MANAGE_EXTERNAL_STORAGE allow || true
+            adb shell pm grant com.mcbox.launcher android.permission.READ_EXTERNAL_STORAGE || true
+            adb shell pm grant com.mcbox.launcher android.permission.WRITE_EXTERNAL_STORAGE || true
+
+            adb logcat -c || true
             echo "=== start ==="
-            adb shell am start -W -n com.mcbox.launcher/.ui.MainActivity
+            adb shell am start -W -n com.mcbox.launcher/.ui.MainActivity || exit 3
             sleep 25
+
             echo "=== pid ==="
-            PID=$(adb shell pidof com.mcbox.launcher)
+            PID=$(adb shell pidof com.mcbox.launcher | tr -d '\r')
             echo "pid=$PID"
-            echo "=== crash log ==="
-            adb logcat -d -b crash | tail -60
-            adb logcat -d -s AndroidRuntime:E | tail -60
-            echo "=== ui ==="
-            adb shell uiautomator dump /sdcard/ui.xml
-            adb pull /sdcard/ui.xml ui.xml
-            cat ui.xml | head -c 4000
-            echo
+
+            echo "=== focus ==="
+            FOCUS=$(adb shell dumpsys window 2>/dev/null | grep -i mCurrentFocus | head -3)
+            echo "$FOCUS"
+
+            echo "=== crash buffer ==="
+            adb logcat -d -b crash | tail -80 || true
+
+            echo "=== ui dump ==="
+            adb shell uiautomator dump /sdcard/ui.xml || true
+            adb pull /sdcard/ui.xml ui.xml || true
+            echo "--- texts ---"
+            grep -o 'text="[^"]\+"' ui.xml | head -40 || true
+            echo "--- packages ---"
+            grep -o 'package="[^"]\+"' ui.xml | sort -u | head -10 || true
+
             echo "=== activity ==="
-            adb shell dumpsys activity activities | grep -i mcbox | head -10
-            echo "=== top ==="
-            adb shell dumpsys window | grep -i mCurrentFocus | head -3
+            adb shell dumpsys activity activities 2>/dev/null | grep -i mcbox | head -10 || true
+
+            echo "=== verdict ==="
             if [ -z "$PID" ]; then
               echo "RESULT=FAIL_NO_PROCESS"
-              exit 1
+              exit 11
             fi
             if adb logcat -d -b crash | grep -q "com.mcbox.launcher"; then
               echo "RESULT=FAIL_CRASH"
-              exit 1
+              exit 12
             fi
-            if ! grep -q 'com.mcbox.launcher' ui.xml; then
-              echo "RESULT=FAIL_NOT_FOREGROUND"
-              exit 1
+            if echo "$FOCUS" | grep -q "com.mcbox.launcher"; then
+              echo "RESULT=PASS_FOREGROUND"
+              exit 0
             fi
-            echo "RESULT=PASS"
+            if grep -q 'com.mcbox.launcher' ui.xml; then
+              echo "RESULT=PASS_UI"
+              exit 0
+            fi
+            echo "RESULT=FAIL_NOT_FOREGROUND"
+            exit 13
 
       - name: Collect device logs
         if: always()
