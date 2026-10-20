@@ -1,0 +1,8 @@
+-dontobfuscate
+-keep class com.mcbox.launcher.** { *; }
+-keep class com.mcbox.core.** { *; }
+-keep class org.lwjgl.** { *; }
+-keep class net.kdt.** { *; }
+-keep class com.oracle.dalvik.** { *; }
+-keep class net.java.openjdk.** { *; }
+-keepclassmembers class * { native <methods>; }

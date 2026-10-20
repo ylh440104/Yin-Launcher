@@ -1,0 +1,9 @@
+.gradle/
+build/
+local.properties
+.idea/
+*.iml
+app/src/main/jniLibs/
+app/src/main/assets/components/
+app/src/main/assets/runtime/
+captures/
