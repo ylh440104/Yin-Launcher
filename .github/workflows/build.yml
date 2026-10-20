@@ -10,12 +10,12 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - name: Cache Pojav payload
+      - name: Cache payload
         id: cache
         uses: actions/cache@v4
         with:
           path: payload
-          key: pojav-payload-gladiolus-v1
+          key: pojav-payload-gladiolus-v2
 
       - name: Fetch payload
         if: steps.cache.outputs.cache-hit != 'true'
@@ -51,23 +51,21 @@ jobs:
           gradle-version: '8.11.1'
 
       - name: Run core tests
-        run: gradle :core:test --stacktrace --no-daemon --info 2>&1 | tail -120
+        run: gradle :core:test --stacktrace --no-daemon
+
+      - name: Show test summary
+        if: always()
+        run: |
+          find core/build/test-results -name '*.xml' -exec grep -h '<testsuite ' {} \; | head -20 || true
 
       - name: Upload test report
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: core-test-report
-          path: core/build/reports/tests/**
-          retention-days: 14
-          if-no-files-found: ignore
-
-      - name: Upload test results
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: core-test-results
-          path: core/build/test-results/**
+          path: |
+            core/build/reports/tests/**
+            core/build/test-results/**
           retention-days: 14
           if-no-files-found: ignore
 
@@ -95,7 +93,7 @@ jobs:
           name: pojav-payload
           path: payload
 
-      - name: Prepare natives and components
+      - name: Prepare arm64 assets
         run: |
           set -e
           mkdir -p app/src/main/jniLibs/arm64-v8a app/src/main/assets/components
@@ -110,17 +108,48 @@ jobs:
           cp payload/extract/assets/components/jre-21/bin-arm64.tar.xz app/src/main/assets/runtime/jre21/
           cp payload/extract/assets/components/jre/universal.tar.xz app/src/main/assets/runtime/jre8/
           cp payload/extract/assets/components/jre/bin-arm64.tar.xz app/src/main/assets/runtime/jre8/
-          ls app/src/main/jniLibs/arm64-v8a
           du -sh app/src/main/assets/runtime/*
 
-      - name: Build debug APK
+      - name: Build arm64 APK
         run: gradle :app:assembleDebug --stacktrace --no-daemon
 
-      - name: Upload APK
+      - name: Stash arm64 apk
+        run: |
+          mkdir -p out
+          cp app/build/outputs/apk/debug/app-debug.apk out/mcbox-arm64.apk
+          ls -la out
+
+      - name: Prepare x86_64 test assets
+        run: |
+          set -e
+          rm -rf app/src/main/jniLibs/arm64-v8a
+          mkdir -p app/src/main/jniLibs/x86_64
+          unzip -o -q payload/pojav.apk 'lib/x86_64/*' -d payload/extract
+          cp payload/extract/lib/x86_64/*.so app/src/main/jniLibs/x86_64/
+          rm -f app/src/main/assets/runtime/jre21/bin-arm64.tar.xz
+          rm -f app/src/main/assets/runtime/jre8/bin-arm64.tar.xz
+          cp payload/extract/assets/components/jre-21/bin-x86_64.tar.xz app/src/main/assets/runtime/jre21/bin-arm64.tar.xz
+          cp payload/extract/assets/components/jre/bin-x86_64.tar.xz app/src/main/assets/runtime/jre8/bin-arm64.tar.xz
+          ls app/src/main/jniLibs/x86_64 | head -30
+
+      - name: Patch ABI filter for test build
+        run: |
+          sed -i 's/abiFilters += listOf("arm64-v8a")/abiFilters += listOf("x86_64")/' app/build.gradle.kts
+          grep -n 'abiFilters' app/build.gradle.kts
+
+      - name: Build x86_64 test APK
+        run: gradle :app:assembleDebug --stacktrace --no-daemon
+
+      - name: Stash test apk
+        run: |
+          cp app/build/outputs/apk/debug/app-debug.apk out/mcbox-x86_64.apk
+          ls -la out
+
+      - name: Upload APKs
         uses: actions/upload-artifact@v4
         with:
-          name: mcbox-debug-apk
-          path: app/build/outputs/apk/debug/*.apk
+          name: mcbox-apk
+          path: out/*.apk
           retention-days: 30
           if-no-files-found: error
 
@@ -129,9 +158,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: build-reports
-          path: |
-            app/build/reports/**
-            core/build/reports/**
+          path: app/build/reports/**
           retention-days: 7
           if-no-files-found: ignore
 
@@ -142,16 +169,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up JDK 17
-        uses: actions/setup-java@v4
-        with:
-          java-version: '17'
-          distribution: 'temurin'
-
-      - name: Download APK
+      - name: Download APKs
         uses: actions/download-artifact@v4
         with:
-          name: mcbox-debug-apk
+          name: mcbox-apk
           path: apk
 
       - name: Enable KVM
@@ -159,43 +180,66 @@ jobs:
           sudo chmod 666 /dev/kvm || true
           ls -la /dev/kvm || true
 
-      - name: Run emulator
+      - name: Boot emulator and verify launch
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 30
           target: google_apis
-          arch: arm64-v8a
+          arch: x86_64
           profile: pixel_5
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -no-audio -no-boot-anim -camera-back none -camera-front none
           script: |
+            set +e
             adb wait-for-device
-            adb shell settings put global window_animation_scale 0 || true
-            adb install -r -t apk/app-debug.apk
-            adb shell appops set com.mcbox.launcher MANAGE_EXTERNAL_STORAGE allow || true
-            adb shell pm grant com.mcbox.launcher android.permission.READ_EXTERNAL_STORAGE || true
-            adb shell pm grant com.mcbox.launcher android.permission.WRITE_EXTERNAL_STORAGE || true
+            adb shell settings put global window_animation_scale 0
+            adb shell settings put global transition_animation_scale 0
+            adb shell settings put global animator_duration_scale 0
+            echo "=== install ==="
+            adb install -r -t apk/mcbox-x86_64.apk
+            INSTALL=$?
+            echo "install_exit=$INSTALL"
+            adb shell appops set com.mcbox.launcher MANAGE_EXTERNAL_STORAGE allow
+            adb shell pm grant com.mcbox.launcher android.permission.READ_EXTERNAL_STORAGE
+            adb shell pm grant com.mcbox.launcher android.permission.WRITE_EXTERNAL_STORAGE
             adb logcat -c
-            adb shell am start -n com.mcbox.launcher/.ui.MainActivity
-            sleep 20
-            adb shell uiautomator dump /sdcard/ui.xml
-            adb pull /sdcard/ui.xml ui.xml
-            echo "=== UI dump ==="
-            cat ui.xml | head -c 3000
-            echo
-            adb shell dumpsys activity activities | grep -i "mcbox" | head -10 || true
-            adb logcat -d -s AndroidRuntime:E | tail -40 || true
+            echo "=== start ==="
+            adb shell am start -W -n com.mcbox.launcher/.ui.MainActivity
+            sleep 25
+            echo "=== pid ==="
             PID=$(adb shell pidof com.mcbox.launcher)
             echo "pid=$PID"
-            if [ -z "$PID" ]; then exit 1; fi
-            if grep -q "AndroidRuntime" ui.xml; then exit 1; fi
+            echo "=== crash log ==="
+            adb logcat -d -b crash | tail -60
+            adb logcat -d -s AndroidRuntime:E | tail -60
+            echo "=== ui ==="
+            adb shell uiautomator dump /sdcard/ui.xml
+            adb pull /sdcard/ui.xml ui.xml
+            cat ui.xml | head -c 4000
+            echo
+            echo "=== activity ==="
+            adb shell dumpsys activity activities | grep -i mcbox | head -10
+            echo "=== top ==="
+            adb shell dumpsys window | grep -i mCurrentFocus | head -3
+            if [ -z "$PID" ]; then
+              echo "RESULT=FAIL_NO_PROCESS"
+              exit 1
+            fi
+            if adb logcat -d -b crash | grep -q "com.mcbox.launcher"; then
+              echo "RESULT=FAIL_CRASH"
+              exit 1
+            fi
+            if ! grep -q 'com.mcbox.launcher' ui.xml; then
+              echo "RESULT=FAIL_NOT_FOREGROUND"
+              exit 1
+            fi
+            echo "RESULT=PASS"
 
-      - name: Collect logs
+      - name: Collect device logs
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: device-logs
-          path: |
-            ui.xml
+          path: ui.xml
           retention-days: 14
           if-no-files-found: ignore
