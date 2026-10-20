@@ -1,9 +1,5 @@
 package com.mcbox.launcher.ui.screens
 
-import android.content.Intent
-import android.net.Uri
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -18,7 +14,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -67,6 +62,7 @@ fun SettingsScreen() {
     var bigCore by remember { mutableStateOf(settings.bigCore) }
     var mirrorId by remember { mutableStateOf(settings.downloadSource) }
     var customMirror by remember { mutableStateOf(settings.customMirrorBase) }
+    var msClientId by remember { mutableStateOf(settings.msClientId) }
     var gameRoot by remember { mutableStateOf(settings.gameRoot) }
     var runtimes by remember { mutableStateOf<List<String>>(emptyList()) }
     var installing by remember { mutableStateOf(false) }
@@ -165,6 +161,28 @@ fun SettingsScreen() {
                         modifier = Modifier.fillMaxWidth()
                     )
                 }
+            }
+        }
+
+        item {
+            SettingCard("微软登录") {
+                OutlinedTextField(
+                    value = msClientId,
+                    onValueChange = {
+                        msClientId = it
+                        settings.msClientId = it.trim()
+                    },
+                    label = { Text("client id") },
+                    placeholder = { Text("留空用内置 b2468fd2-...") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    "内置 id 若被微软拒绝 700016 可换自己的 Azure 应用 id",
+                    fontSize = 10.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
         }
 
@@ -304,63 +322,18 @@ fun SettingsScreen() {
     }
 
     if (showDirDialog) {
-        AlertDialog(
-            onDismissRequest = { showDirDialog = false },
-            title = { Text("游戏目录") },
-            text = {
-                Column {
-                    GameDirs.candidates(context).forEach { (label, dir) ->
-                        Row(
-                            Modifier
-                                .fillMaxWidth()
-                                .clickable { dirInput = dir.absolutePath },
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Column(
-                                Modifier
-                                    .weight(1f)
-                                    .padding(vertical = 8.dp)
-                            ) {
-                                Text(label, fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurface)
-                                Text(
-                                    dir.absolutePath,
-                                    fontSize = 10.sp,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                            if (dirInput == dir.absolutePath) {
-                                Icon(
-                                    Icons.Default.Check,
-                                    contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.primary
-                                )
-                            }
-                        }
-                    }
-                    Spacer(Modifier.height(10.dp))
-                    OutlinedTextField(
-                        value = dirInput,
-                        onValueChange = { dirInput = it },
-                        label = { Text("自定义路径") },
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth()
-                    )
+        DirectoryPickerDialog(
+            initial = gameRoot,
+            onDismiss = { showDirDialog = false },
+            onPick = { picked ->
+                if (GameDirs.isUsable(picked)) {
+                    settings.gameRoot = picked.absolutePath
+                    gameRoot = picked.absolutePath
+                    dirInput = picked.absolutePath
+                    showDirDialog = false
+                } else {
+                    installLog = "目录不可写: ${picked.absolutePath}"
                 }
-            },
-            confirmButton = {
-                TextButton(onClick = {
-                    val target = File(dirInput.trim())
-                    if (GameDirs.isUsable(target)) {
-                        settings.gameRoot = target.absolutePath
-                        gameRoot = target.absolutePath
-                        showDirDialog = false
-                    } else {
-                        installLog = "目录不可写: $dirInput"
-                    }
-                }) { Text("应用") }
-            },
-            dismissButton = {
-                TextButton(onClick = { showDirDialog = false }) { Text("取消") }
             }
         )
     }

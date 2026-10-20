@@ -96,7 +96,9 @@ fun AccountScreen() {
                         error = null
                         msStatus = "请求设备码"
                         try {
-                            val auth = MicrosoftAuth()
+                            val custom = settings.msClientId.trim()
+                            val auth = if (custom.isEmpty()) MicrosoftAuth()
+                            else MicrosoftAuth(clientId = custom)
                             val account = withContext(Dispatchers.IO) {
                                 auth.fullLogin(
                                     onDeviceCode = { info -> deviceCode = info },

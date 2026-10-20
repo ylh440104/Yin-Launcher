@@ -31,18 +31,15 @@ class MicrosoftAuth(
 ) {
 
     fun requestDeviceCode(): DeviceCodeInfo {
-        val body = buildJsonObject {
-            put("client_id", clientId)
-            put("scope", Endpoints.MS_SCOPE)
-        }.toString()
         val resp = try {
             http.postForm(Endpoints.MS_DEVICE_CODE, mapOf("client_id" to clientId, "scope" to Endpoints.MS_SCOPE))
         } catch (e: IOException) {
-            throw MicrosoftAuthException("device code request failed: ${e.message}")
+            throw MicrosoftAuthException(friendlyError(e.message.orEmpty()))
         }
-        val obj = JsonCompact.parseToJsonElement(resp).jsonObject
-        val userCode = obj.str("user_code") ?: throw MicrosoftAuthException("no user_code")
-        val deviceCode = obj.str("device_code") ?: throw MicrosoftAuthException("no device_code")
+        val obj = runCatching { JsonCompact.parseToJsonElement(resp).jsonObject }.getOrNull()
+            ?: throw MicrosoftAuthException("设备码响应无法解析")
+        val userCode = obj.str("user_code") ?: throw MicrosoftAuthException(friendlyError(resp))
+        val deviceCode = obj.str("device_code") ?: throw MicrosoftAuthException(friendlyError(resp))
         val uri = obj.str("verification_uri") ?: obj.str("verification_url") ?: "https://microsoft.com/link"
         return DeviceCodeInfo(
             userCode = userCode,
@@ -52,6 +49,19 @@ class MicrosoftAuth(
             interval = obj.int("interval", 5),
             message = obj.str("message").orEmpty()
         )
+    }
+
+    private fun friendlyError(raw: String): String = when {
+        raw.contains("unauthorized_client") || raw.contains("700016") ->
+            "微软登录不可用：应用未获授权（AADSTS700016）。请到设置里换一个有效的 client id"
+        raw.contains("invalid_client") || raw.contains("7000215") ->
+            "微软登录不可用：client id 无效"
+        raw.contains("consent_required") || raw.contains("65004") ->
+            "微软登录需要在网页上同意授权后再试一次"
+        raw.contains("HTTP 400") -> "微软登录请求被拒绝：$raw"
+        raw.contains("UnknownHost") || raw.contains("timeout") || raw.contains("timed out") ->
+            "网络不可用，检查网络后重试"
+        else -> raw.ifBlank { "微软登录失败" }
     }
 
     fun pollForToken(info: DeviceCodeInfo, onWait: (Int) -> Unit = {}): TokenResponse {

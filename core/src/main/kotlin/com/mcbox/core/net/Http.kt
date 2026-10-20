@@ -32,7 +32,7 @@ object Endpoints {
     const val NEOFORGE_MAVEN = "https://maven.neoforged.net/releases"
     const val PAPERMAVEN_REPO = "https://repo.papermc.io/repository/maven-public"
 
-    const val MOJANG_CLIENT_ID = "00000000402b5328"
+    const val MOJANG_CLIENT_ID = "b2468fd2-7996-4f42-8857-5b65d834ef5c"
     const val MS_SCOPE = "XboxLive.signin offline_access"
 }
 

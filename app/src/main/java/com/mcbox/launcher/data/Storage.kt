@@ -162,6 +162,12 @@ class SettingsStore(context: Context) {
             prefs.edit().putString("active_account", value).apply()
         }
 
+    var msClientId: String
+        get() = prefs.getString("ms_client_id", "") ?: ""
+        set(value) {
+            prefs.edit().putString("ms_client_id", value).apply()
+        }
+
     fun defaultMemory(): Int {
         val max = (Runtime.getRuntime().maxMemory() / (1024 * 1024)).toInt()
         return when {
