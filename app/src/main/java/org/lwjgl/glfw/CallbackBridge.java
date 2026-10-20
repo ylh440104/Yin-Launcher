@@ -143,12 +143,12 @@ public class CallbackBridge {
     }
 
     public static String accessAndroidClipboard(int type, String copy) {
-        return InputBridge.handleClipboard(type, copy);
+        return InputBridge.INSTANCE.handleClipboard(type, copy);
     }
 
     public static void onGrabStateChanged(boolean grabbingNow) {
         grabbing = grabbingNow;
-        InputBridge.onGrabChanged(grabbingNow);
+        InputBridge.INSTANCE.onGrabChanged(grabbingNow);
     }
 
     public static void onDirectInputEnable() {
