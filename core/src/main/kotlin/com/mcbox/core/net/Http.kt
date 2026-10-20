@@ -1,7 +1,9 @@
 package com.mcbox.core.net
 
+import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.Response
 import java.io.File
 import java.io.IOException
@@ -60,7 +62,7 @@ class Http(private val client: OkHttpClient = defaultClient) {
     fun postJson(url: String, body: String, headers: Map<String, String> = emptyMap()): String {
         val req = Request.Builder()
             .url(url)
-            .post(okhttp3.RequestBody.create(body, okhttp3.MediaType.parse("application/json")))
+            .post(body.toRequestBody("application/json".toMediaType()))
             .apply { headers.forEach { (k, v) -> header(k, v) } }
             .build()
         client.newCall(req).execute().use { resp ->

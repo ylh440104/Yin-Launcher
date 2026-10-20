@@ -181,19 +181,18 @@ class MicrosoftAuth(
         val model = skins?.firstOrNull()?.jsonObject?.str("variant") ?: "CLASSIC"
         return McProfile(id, name, model)
     }
-
     fun checkEntitlement(mcAccessToken: String): Boolean {
-        return try {
-            val resp = http.getText(
+        val resp = try {
+            http.getText(
                 "https://api.minecraftservices.com/entitlements/mcstore",
                 mapOf("Authorization" to "Bearer $mcAccessToken")
             )
-            val obj = JsonCompact.parseToJsonElement(resp).jsonObject
-            val items = obj["items"] as? kotlinx.serialization.json.JsonArray
-            !items.isNullOrEmpty()
         } catch (e: IOException) {
-            false
+            return false
         }
+        val obj = JsonCompact.parseToJsonElement(resp).jsonObject
+        val itemsArray = obj["items"] as? kotlinx.serialization.json.JsonArray
+        return itemsArray != null && itemsArray.isNotEmpty()
     }
 
     fun fullLogin(
