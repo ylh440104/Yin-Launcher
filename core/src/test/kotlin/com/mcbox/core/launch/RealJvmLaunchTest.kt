@@ -129,7 +129,9 @@ class RealJvmLaunchTest {
         assertTrue(text.contains("Tester"), "player name not passed: $text")
         assertTrue(text.contains("mcbox-selftest"), "version not passed: $text")
         assertTrue(text.contains(nativesDir.absolutePath), "natives path missing: $text")
-        assertTrue(text.contains("Bootstrap"), "classpath not applied: $text")
+        assertTrue(text.contains("user=${gameDir.absolutePath}"), "user.home not applied: $text")
+        assertTrue(text.contains(classesDir.absolutePath), "classpath not applied: $text")
+        assertTrue(text.contains("maxmem="), "max memory not reported: $text")
 
         temp.deleteRecursively()
     }

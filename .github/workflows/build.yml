@@ -178,6 +178,30 @@ jobs:
           sudo chmod 666 /dev/kvm || true
           ls -la /dev/kvm || true
 
+      - name: Write verification script
+        run: |
+          cat > verify.sh <<'SCRIPT'
+          #!/bin/sh
+          set -x
+          adb wait-for-device
+          adb shell settings put global window_animation_scale 0
+          adb logcat -c
+          adb install -r -t apk/mcbox-x86_64.apk
+          adb shell appops set com.mcbox.launcher MANAGE_EXTERNAL_STORAGE allow
+          adb shell am start -W -n com.mcbox.launcher/.ui.MainActivity
+          sleep 20
+          adb shell pidof com.mcbox.launcher > pid.txt
+          cat pid.txt
+          adb shell dumpsys activity activities > activity.txt
+          cat activity.txt | grep mcbox
+          adb shell uiautomator dump /sdcard/ui.xml
+          adb pull /sdcard/ui.xml ui.xml
+          cat ui.xml
+          adb logcat -d -b crash > crash.txt
+          cat crash.txt
+          SCRIPT
+          chmod +x verify.sh
+
       - name: Boot emulator and verify launch
         uses: reactivecircus/android-emulator-runner@v2
         with:
@@ -187,71 +211,33 @@ jobs:
           profile: pixel_5
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -no-audio -no-boot-anim -camera-back none -camera-front none
-          script: |
-            adb wait-for-device
-            adb shell settings put global window_animation_scale 0 || true
-            adb shell settings put global transition_animation_scale 0 || true
-            adb shell settings put global animator_duration_scale 0 || true
+          script: sh verify.sh
 
-            echo "=== install ==="
-            adb install -r -t apk/mcbox-x86_64.apk || exit 2
-
-            adb shell appops set com.mcbox.launcher MANAGE_EXTERNAL_STORAGE allow || true
-            adb shell pm grant com.mcbox.launcher android.permission.READ_EXTERNAL_STORAGE || true
-            adb shell pm grant com.mcbox.launcher android.permission.WRITE_EXTERNAL_STORAGE || true
-
-            adb logcat -c || true
-            echo "=== start ==="
-            adb shell am start -W -n com.mcbox.launcher/.ui.MainActivity || exit 3
-            sleep 25
-
-            echo "=== pid ==="
-            PID=$(adb shell pidof com.mcbox.launcher | tr -d '\r')
-            echo "pid=$PID"
-
-            echo "=== focus ==="
-            FOCUS=$(adb shell dumpsys window 2>/dev/null | grep -i mCurrentFocus | head -3)
-            echo "$FOCUS"
-
-            echo "=== crash buffer ==="
-            adb logcat -d -b crash | tail -80 || true
-
-            echo "=== ui dump ==="
-            adb shell uiautomator dump /sdcard/ui.xml || true
-            adb pull /sdcard/ui.xml ui.xml || true
-            echo "--- texts ---"
-            grep -o 'text="[^"]\+"' ui.xml | head -40 || true
-            echo "--- packages ---"
-            grep -o 'package="[^"]\+"' ui.xml | sort -u | head -10 || true
-
-            echo "=== activity ==="
-            adb shell dumpsys activity activities 2>/dev/null | grep -i mcbox | head -10 || true
-
-            echo "=== verdict ==="
-            if [ -z "$PID" ]; then
-              echo "RESULT=FAIL_NO_PROCESS"
-              exit 11
-            fi
-            if adb logcat -d -b crash | grep -q "com.mcbox.launcher"; then
-              echo "RESULT=FAIL_CRASH"
-              exit 12
-            fi
-            if echo "$FOCUS" | grep -q "com.mcbox.launcher"; then
-              echo "RESULT=PASS_FOREGROUND"
-              exit 0
-            fi
-            if grep -q 'com.mcbox.launcher' ui.xml; then
-              echo "RESULT=PASS_UI"
-              exit 0
-            fi
-            echo "RESULT=FAIL_NOT_FOREGROUND"
-            exit 13
+      - name: Verify results
+        run: |
+          echo "=== ui ==="
+          grep -o 'text="[^"]\+"' ui.xml | head -40
+          echo "=== resumed activity ==="
+          grep -i mResumedActivity activity.txt | head -5
+          echo "=== pid ==="
+          cat pid.txt
+          echo "=== crash ==="
+          cat crash.txt | head -40
+          test -s pid.txt
+          grep -q 'com.mcbox.launcher/.ui.MainActivity' activity.txt
+          grep -q 'com.mcbox.launcher' ui.xml
+          if grep -q 'com.mcbox.launcher' crash.txt; then echo "CRASH DETECTED"; exit 1; fi
+          echo "DEVICE_TEST_PASS"
 
       - name: Collect device logs
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: device-logs
-          path: ui.xml
+          path: |
+            ui.xml
+            activity.txt
+            pid.txt
+            crash.txt
           retention-days: 14
           if-no-files-found: ignore
