@@ -64,12 +64,15 @@ class InstanceStore(context: Context) {
 
 class SettingsStore(context: Context) {
 
-    private val prefs = context.getSharedPreferences("mcbox_settings", Context.MODE_PRIVATE)
-    private val accountFile = File(context.filesDir, "accounts.json")
+    private val appContext: Context = context.applicationContext
+    private val prefs = appContext.getSharedPreferences("mcbox_settings", Context.MODE_PRIVATE)
+    private val accountFile = File(appContext.filesDir, "accounts.json")
+
+    private val defaultGameRoot: String
+        get() = File(appContext.getExternalFilesDir(null), "mcbox").absolutePath
 
     var gameRoot: String
-        get() = prefs.getString("game_root", File(context.getExternalFilesDir(null), "mcbox").absolutePath)
-            ?: File(context.getExternalFilesDir(null), "mcbox").absolutePath
+        get() = prefs.getString("game_root", defaultGameRoot) ?: defaultGameRoot
         set(value) {
             prefs.edit().putString("game_root", value).apply()
         }
