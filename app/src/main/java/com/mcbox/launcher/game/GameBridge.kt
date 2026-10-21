@@ -1,6 +1,7 @@
 package com.mcbox.launcher.game
 
 import android.content.Intent
+import android.util.Log
 import com.mcbox.core.GamePaths
 import com.mcbox.core.PlatformInfo
 import com.mcbox.core.launch.ArgumentBuilder
@@ -55,6 +56,8 @@ object GameBridge {
             try {
                 activity.appendStatus("自检原生库")
                 val check = NativeSelfCheck.run(activity, activity.applicationInfo.nativeLibraryDir)
+                Log.i("GameBridge", "selfcheck allOk=${check.allOk} msg=${check.message}")
+                JREUtils.appendLog("selfcheck allOk=${check.allOk} ${check.message}")
                 activity.appendStatus(check.message)
                 if (!check.allOk) {
                     activity.appendStatus("原生库不可用，已停止启动，避免崩溃")
