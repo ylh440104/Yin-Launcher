@@ -50,7 +50,7 @@ class ArgumentBuilder(
     private val platform: PlatformInfo = PlatformInfo.android()
 ) {
 
-    private val placeholderRegex = Regex("\\$\\{([^}]+)}")
+    private val placeholderRegex = Regex("\\$\\{([^}]+)\\}")
 
     fun buildJvmArgs(config: LaunchConfig): List<String> {
         val args = mutableListOf<String>()
