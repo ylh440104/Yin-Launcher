@@ -92,11 +92,11 @@ class JavaLauncher(
     }
 
     fun loadJvmLibraries(runtime: RuntimeInfo) {
-        val jvmLib = File(runtime.jvmDir, "libjvm.so")
-        Log.i(TAG, "jvm library: ${jvmLib.absolutePath}")
-        JREUtils.dlopen(File(runtime.home, "lib/jli/libjli.so").absolutePath)
-        if (!JREUtils.dlopen(jvmLib.absolutePath)) {
-            JREUtils.dlopen("libjvm.so")
+        val jvmLib = runtime.jvmLibrary
+        Log.i(TAG, "jvm library: ${jvmLib.absolutePath} exists=${jvmLib.exists()}")
+        JREUtils.safeDlopen(File(runtime.home, "lib/jli/libjli.so").absolutePath)
+        if (!JREUtils.safeDlopen(jvmLib.absolutePath)) {
+            JREUtils.safeDlopen("libjvm.so")
         }
         listOf(
             "libverify.so", "libjava.so", "libnet.so", "libnio.so",
@@ -110,15 +110,15 @@ class JavaLauncher(
             )
             for (candidate in candidates) {
                 if (candidate.exists()) {
-                    JREUtils.dlopen(candidate.absolutePath)
+                    JREUtils.safeDlopen(candidate.absolutePath)
                     break
                 }
             }
         }
         val ftNative = File(nativeLibDir, "libfreetype.so")
-        if (ftNative.exists()) JREUtils.dlopen(ftNative.absolutePath)
+        if (ftNative.exists()) JREUtils.safeDlopen(ftNative.absolutePath)
         val openal = File(nativeLibDir, "libopenal.so")
-        if (openal.exists()) JREUtils.dlopen(openal.absolutePath)
+        if (openal.exists()) JREUtils.safeDlopen(openal.absolutePath)
     }
 
     fun loadJvmLibrariesQuiet(runtime: RuntimeInfo) {
@@ -133,9 +133,9 @@ class JavaLauncher(
         if (prepared) return
         val env = buildEnvironment(runtime, gameDir, cacheDir)
         applyEnvironment(env)
-        JREUtils.setLdLibraryPath(buildLdLibraryPath(runtime))
+        JREUtils.safeSetLdLibraryPath(buildLdLibraryPath(runtime))
         loadJvmLibraries(runtime)
-        JREUtils.setupExitMethod(context.applicationContext)
+        JREUtils.safeSetupExitMethod(context.applicationContext)
         prepared = true
     }
 
@@ -150,8 +150,8 @@ class JavaLauncher(
         prepare(runtime, gameDir, cacheDir)
 
         JREUtils.beginLog(logFile)
-        JREUtils.initializeHooks()
-        JREUtils.chdir(gameDir.absolutePath)
+        JREUtils.safeInitializeHooks()
+        JREUtils.safeChdir(gameDir.absolutePath)
 
         val builder = ArgumentBuilder()
         val jvmArgs = mutableListOf<String>()

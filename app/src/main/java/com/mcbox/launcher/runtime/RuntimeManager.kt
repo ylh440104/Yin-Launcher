@@ -14,9 +14,18 @@ data class RuntimeInfo(
     val home: File
 ) {
     val binJava: File get() = File(home, "bin/java")
-    val serverLib: File get() = File(home, "lib/server/libjvm.so")
-    val clientLib: File get() = File(home, "lib/client/libjvm.so")
-    val jvmDir: File get() = if (serverLib.exists()) File(home, "lib/server") else File(home, "lib/client")
+    private val serverLib: File get() = File(home, "lib/server/libjvm.so")
+    private val clientLib: File get() = File(home, "lib/client/libjvm.so")
+    private val flatLib: File get() = File(home, "lib/libjvm.so")
+    val jvmDir: File
+        get() = when {
+            serverLib.exists() -> File(home, "lib/server")
+            clientLib.exists() -> File(home, "lib/client")
+            flatLib.exists() -> File(home, "lib")
+            else -> File(home, "lib/server")
+        }
+    val jvmLibrary: File
+        get() = File(jvmDir, "libjvm.so")
 }
 
 class RuntimeManager(private val context: Context, private val runtimesDir: File) {
