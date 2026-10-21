@@ -77,6 +77,7 @@ android {
         getByName("main") {
             jniLibs.srcDirs("src/main/jniLibs")
             assets.srcDirs("src/main/assets")
+            java.srcDirs("src/main/java", "src/main/kotlin")
         }
     }
 }

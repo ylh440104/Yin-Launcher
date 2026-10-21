@@ -40,6 +40,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.mcbox.core.GamePaths
+import com.mcbox.core.auth.MicrosoftAuth
 import com.mcbox.core.install.MirrorCatalog
 import com.mcbox.launcher.data.GameDirs
 import com.mcbox.launcher.data.SettingsStore
@@ -63,6 +64,8 @@ fun SettingsScreen() {
     var mirrorId by remember { mutableStateOf(settings.downloadSource) }
     var customMirror by remember { mutableStateOf(settings.customMirrorBase) }
     var msClientId by remember { mutableStateOf(settings.msClientId) }
+    var msProbe by remember { mutableStateOf("") }
+    var nativeReport by remember { mutableStateOf("") }
     var gameRoot by remember { mutableStateOf(settings.gameRoot) }
     var runtimes by remember { mutableStateOf<List<String>>(emptyList()) }
     var installing by remember { mutableStateOf(false) }
@@ -183,6 +186,34 @@ fun SettingsScreen() {
                     fontSize = 10.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
+                Spacer(Modifier.height(8.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(
+                        onClick = {
+                            scope.launch {
+                                msProbe = "检测中"
+                                msProbe = try {
+                                    withContext(Dispatchers.IO) {
+                                        val id = settings.msClientId.trim()
+                                        val auth = if (id.isEmpty()) MicrosoftAuth() else MicrosoftAuth(clientId = id)
+                                        auth.probe()
+                                    }
+                                } catch (t: Throwable) {
+                                    "失败 ${t.message}"
+                                }
+                            }
+                        }
+                    ) { Text("检测 id") }
+                }
+                if (msProbe.isNotEmpty()) {
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        msProbe,
+                        fontSize = 11.sp,
+                        color = if (msProbe.startsWith("可用")) MaterialTheme.colorScheme.primary
+                        else MaterialTheme.colorScheme.error
+                    )
+                }
             }
         }
 
@@ -301,6 +332,46 @@ fun SettingsScreen() {
                     Spacer(Modifier.height(8.dp))
                     Text(
                         installLog,
+                        fontSize = 11.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+        }
+
+        item {
+            SettingCard("原生库自检") {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(onClick = {
+                        scope.launch {
+                            nativeReport = "检测中"
+                            nativeReport = withContext(Dispatchers.IO) {
+                                val result = com.mcbox.launcher.runtime.NativeSelfCheck.run(
+                                    context,
+                                    context.applicationInfo.nativeLibraryDir
+                                )
+                                buildString {
+                                    append("库 ")
+                                    append(if (result.libsLoaded) "OK" else "FAIL")
+                                    append(" 输入 ")
+                                    append(if (result.inputBridgeOk) "OK" else "FAIL")
+                                    append(" 回调 ")
+                                    append(if (result.callbackBridgeOk) "OK" else "FAIL")
+                                    append(" JRE ")
+                                    append(if (result.jreUtilsOk) "OK" else "FAIL")
+                                    append(" 日志 ")
+                                    append(if (result.loggerOk) "OK" else "FAIL")
+                                    append('\n')
+                                    append(result.message)
+                                }
+                            }
+                        }
+                    }) { Text("运行自检") }
+                }
+                if (nativeReport.isNotEmpty()) {
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        nativeReport,
                         fontSize = 11.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )

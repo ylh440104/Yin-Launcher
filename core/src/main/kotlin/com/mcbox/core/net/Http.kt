@@ -21,6 +21,8 @@ object Endpoints {
 
     const val MS_DEVICE_CODE = "https://login.microsoftonline.com/consumers/oauth2/v2.0/devicecode"
     const val MS_TOKEN = "https://login.microsoftonline.com/consumers/oauth2/v2.0/token"
+    const val MS_DEVICE_CODE_COMMON = "https://login.microsoftonline.com/common/oauth2/v2.0/devicecode"
+    const val MS_TOKEN_COMMON = "https://login.microsoftonline.com/common/oauth2/v2.0/token"
     const val XBL_AUTH = "https://user.auth.xboxlive.com/user/authenticate"
     const val XSTS_AUTH = "https://xsts.auth.xboxlive.com/xsts/authorize"
     const val MC_AUTH = "https://api.minecraftservices.com/authentication/login_with_xbox"
@@ -32,7 +34,7 @@ object Endpoints {
     const val NEOFORGE_MAVEN = "https://maven.neoforged.net/releases"
     const val PAPERMAVEN_REPO = "https://repo.papermc.io/repository/maven-public"
 
-    const val MOJANG_CLIENT_ID = "b2468fd2-7996-4f42-8857-5b65d834ef5c"
+    const val MOJANG_CLIENT_ID = "f3b9b03a-f1b6-4ada-9c32-2af903f3bbe6"
     const val MS_SCOPE = "XboxLive.signin offline_access"
 }
 

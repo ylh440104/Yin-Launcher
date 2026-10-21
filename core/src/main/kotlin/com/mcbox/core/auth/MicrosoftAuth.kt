@@ -31,37 +31,59 @@ class MicrosoftAuth(
 ) {
 
     fun requestDeviceCode(): DeviceCodeInfo {
-        val resp = try {
-            http.postForm(Endpoints.MS_DEVICE_CODE, mapOf("client_id" to clientId, "scope" to Endpoints.MS_SCOPE))
-        } catch (e: IOException) {
-            throw MicrosoftAuthException(friendlyError(e.message.orEmpty()))
+        val endpoints = listOf(Endpoints.MS_DEVICE_CODE, Endpoints.MS_DEVICE_CODE_COMMON)
+        var lastError: Throwable? = null
+        for (endpoint in endpoints) {
+            val resp = try {
+                http.postForm(endpoint, mapOf("client_id" to clientId, "scope" to Endpoints.MS_SCOPE))
+            } catch (e: IOException) {
+                lastError = MicrosoftAuthException(friendlyError(e.message.orEmpty()))
+                continue
+            }
+            val obj = runCatching { JsonCompact.parseToJsonElement(resp).jsonObject }.getOrNull()
+                ?: continue
+            val userCode = obj.str("user_code")
+            val deviceCode = obj.str("device_code")
+            if (userCode == null || deviceCode == null) {
+                lastError = MicrosoftAuthException(friendlyError(resp))
+                continue
+            }
+            val uri = obj.str("verification_uri") ?: obj.str("verification_url") ?: "https://microsoft.com/link"
+            tokenEndpoint = if (endpoint == Endpoints.MS_DEVICE_CODE) Endpoints.MS_TOKEN else Endpoints.MS_TOKEN_COMMON
+            return DeviceCodeInfo(
+                userCode = userCode,
+                deviceCode = deviceCode,
+                verificationUri = uri,
+                expiresIn = obj.int("expires_in", 900),
+                interval = obj.int("interval", 5),
+                message = obj.str("message").orEmpty()
+            )
         }
-        val obj = runCatching { JsonCompact.parseToJsonElement(resp).jsonObject }.getOrNull()
-            ?: throw MicrosoftAuthException("设备码响应无法解析")
-        val userCode = obj.str("user_code") ?: throw MicrosoftAuthException(friendlyError(resp))
-        val deviceCode = obj.str("device_code") ?: throw MicrosoftAuthException(friendlyError(resp))
-        val uri = obj.str("verification_uri") ?: obj.str("verification_url") ?: "https://microsoft.com/link"
-        return DeviceCodeInfo(
-            userCode = userCode,
-            deviceCode = deviceCode,
-            verificationUri = uri,
-            expiresIn = obj.int("expires_in", 900),
-            interval = obj.int("interval", 5),
-            message = obj.str("message").orEmpty()
-        )
+        throw lastError as? MicrosoftAuthException
+            ?: MicrosoftAuthException(lastError?.message ?: "微软登录失败")
     }
+
+    @Volatile
+    private var tokenEndpoint: String = Endpoints.MS_TOKEN
 
     private fun friendlyError(raw: String): String = when {
         raw.contains("unauthorized_client") || raw.contains("700016") ->
-            "微软登录不可用：应用未获授权（AADSTS700016）。请到设置里换一个有效的 client id"
+            "微软登录不可用：应用未获授权（AADSTS700016）。到设置里换一个 client id"
         raw.contains("invalid_client") || raw.contains("7000215") ->
             "微软登录不可用：client id 无效"
-        raw.contains("consent_required") || raw.contains("65004") ->
+        raw.contains("65004") || raw.contains("consent_required") ->
             "微软登录需要在网页上同意授权后再试一次"
+        raw.contains("7000222") || raw.contains("7000218") ->
+            "该 client id 未开启公共客户端流，去 Azure 应用身份验证里打开「允许公共客户端流」"
         raw.contains("HTTP 400") -> "微软登录请求被拒绝：$raw"
         raw.contains("UnknownHost") || raw.contains("timeout") || raw.contains("timed out") ->
             "网络不可用，检查网络后重试"
         else -> raw.ifBlank { "微软登录失败" }
+    }
+
+    fun probe(): String {
+        val info = requestDeviceCode()
+        return "可用 代码 ${info.userCode} 到期 ${info.expiresIn}s"
     }
 
     fun pollForToken(info: DeviceCodeInfo, onWait: (Int) -> Unit = {}): TokenResponse {
@@ -74,7 +96,7 @@ class MicrosoftAuth(
             onWait(waited)
             val resp = try {
                 http.postForm(
-                    Endpoints.MS_TOKEN,
+                    tokenEndpoint,
                     mapOf(
                         "client_id" to clientId,
                         "grant_type" to "urn:ietf:params:oauth:grant-type:device_code",
@@ -99,7 +121,7 @@ class MicrosoftAuth(
 
     fun refresh(refreshToken: String): TokenResponse {
         val resp = http.postForm(
-            Endpoints.MS_TOKEN,
+            tokenEndpoint,
             mapOf(
                 "client_id" to clientId,
                 "grant_type" to "refresh_token",

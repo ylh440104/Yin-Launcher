@@ -121,6 +121,14 @@ class JavaLauncher(
         if (openal.exists()) JREUtils.dlopen(openal.absolutePath)
     }
 
+    fun loadJvmLibrariesQuiet(runtime: RuntimeInfo) {
+        try {
+            loadJvmLibraries(runtime)
+        } catch (t: Throwable) {
+            Log.w(TAG, "native preload failed", t)
+        }
+    }
+
     fun prepare(runtime: RuntimeInfo, gameDir: File, cacheDir: File) {
         if (prepared) return
         val env = buildEnvironment(runtime, gameDir, cacheDir)

@@ -80,12 +80,11 @@ class GameActivity : AppCompatActivity(), GameSurfaceView.Listener {
     override fun onSurfaceReady(holder: SurfaceHolder) {
         val width = surfaceView.width.coerceAtLeast(1)
         val height = surfaceView.height.coerceAtLeast(1)
-        surfaceView.syncWindowSize(width, height)
         if (launched) return
         launched = true
         JREUtils.setupBridgeWindow(holder.surface)
         statusView.visibility = View.GONE
-        GameBridge.start(this, intent)
+        GameBridge.start(this, intent, holder, width, height)
     }
 
     override fun onSurfaceDestroyed() {

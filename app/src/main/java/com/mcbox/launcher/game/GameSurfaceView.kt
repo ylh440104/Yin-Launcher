@@ -50,7 +50,6 @@ class GameSurfaceView @JvmOverloads constructor(
     }
 
     override fun surfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) {
-        CallbackBridge.sendUpdateWindowSize(width, height)
         cursorX = width / 2f
         cursorY = height / 2f
     }
@@ -59,7 +58,7 @@ class GameSurfaceView @JvmOverloads constructor(
         listener?.onSurfaceDestroyed()
     }
 
-    fun syncWindowSize(width: Int, height: Int) {
+    fun applyWindowSize(width: Int, height: Int) {
         CallbackBridge.sendUpdateWindowSize(width, height)
         cursorX = width / 2f
         cursorY = height / 2f

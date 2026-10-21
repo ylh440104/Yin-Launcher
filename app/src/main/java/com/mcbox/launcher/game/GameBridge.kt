@@ -12,6 +12,7 @@ import com.mcbox.core.model.AccountUuid
 import com.mcbox.launcher.data.InstanceStore
 import com.mcbox.launcher.data.SettingsStore
 import com.mcbox.launcher.runtime.JavaLauncher
+import com.mcbox.launcher.runtime.NativeSelfCheck
 import com.mcbox.launcher.runtime.RuntimeManager
 import net.kdt.pojavlaunch.utils.JREUtils
 import org.lwjgl.glfw.CallbackBridge
@@ -22,7 +23,7 @@ object GameBridge {
     @Volatile
     private var thread: Thread? = null
 
-    fun start(activity: GameActivity, intent: Intent) {
+    fun start(activity: GameActivity, intent: Intent, holder: android.view.SurfaceHolder?, widthPx: Int, heightPx: Int) {
         val instanceId = intent.getStringExtra(GameActivity.EXTRA_INSTANCE) ?: return
         val settings = SettingsStore(activity)
         val instanceStore = InstanceStore(activity)
@@ -37,8 +38,8 @@ object GameBridge {
         val javaMajor = intent.getIntExtra(GameActivity.EXTRA_JAVA_MAJOR, instance.javaMajor)
         val memory = intent.getIntExtra(GameActivity.EXTRA_MEMORY, settings.memoryMb)
         val renderer = intent.getStringExtra(GameActivity.EXTRA_RENDERER) ?: settings.renderer
-        val width = CallbackBridge.windowWidth.coerceAtLeast(1)
-        val height = CallbackBridge.windowHeight.coerceAtLeast(1)
+        val width = widthPx.coerceAtLeast(1)
+        val height = heightPx.coerceAtLeast(1)
 
         val runtimeManager = RuntimeManager(activity, paths.runtimes)
         val runtime = runtimeManager.findForMajor(javaMajor)
@@ -52,6 +53,18 @@ object GameBridge {
 
         thread = Thread {
             try {
+                activity.appendStatus("自检原生库")
+                val check = NativeSelfCheck.run(activity, activity.applicationInfo.nativeLibraryDir)
+                activity.appendStatus(check.message)
+                if (!check.allOk) {
+                    activity.appendStatus("原生库不可用，已停止启动，避免崩溃")
+                    activity.onGameExit(-1)
+                    return@Thread
+                }
+                activity.appendStatus("加载 JVM 库")
+                JavaLauncher(activity.applicationContext, activity.applicationInfo.nativeLibraryDir)
+                    .loadJvmLibrariesQuiet(runtime)
+                CallbackBridge.sendUpdateWindowSize(width, height)
                 activity.appendStatus("解析版本 ${instance.versionId}")
                 val resolver = VersionResolver(paths)
                 val merged = resolver.loadMerged(instance.versionId)
