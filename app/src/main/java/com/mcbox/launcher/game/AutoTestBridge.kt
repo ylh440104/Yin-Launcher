@@ -40,32 +40,47 @@ object AutoTestBridge {
             try {
                 val settings = SettingsStore(appContext)
                 val paths = GamePaths(File(settings.gameRoot)).ensure()
-                val installer = VersionInstaller(
-                    paths,
-                    mirrors = settings.mirrors()
-                )
 
                 step("mkdirs", true, settings.gameRoot)
 
-                val manifest = installer.fetchManifest()
-                step("manifest", manifest.versions.isNotEmpty(), "count=${manifest.versions.size}")
+                val installed = paths.versions.listFiles()
+                    ?.filter { it.isDirectory }
+                    ?.map { it.name }
+                    ?.sortedDescending()
+                    .orEmpty()
+                step("scan-installed", true, installed.joinToString(",").ifEmpty { "none" })
 
-                val target = manifest.versions.first { it.type == "release" }
-                val versionJson: VersionJson = installer.fetchVersionJson(target)
-                step("versionjson", versionJson.mainClass.isNotEmpty(), "id=${versionJson.id}")
-
-                installer.install(target.id, target.url, object : ProgressListener {
-                    override fun onProgress(progress: InstallProgress) {}
-                }, includeAssets = false)
-                step("download-libs-client", true, target.id)
+                val pickedId = installed.firstOrNull { File(paths.versionDir(it), "$it.json").exists() }
+                val versionId: String
+                val versionJson: VersionJson
+                if (pickedId != null) {
+                    versionId = pickedId
+                    versionJson = com.mcbox.core.util.JsonCompact.decodeFromString(
+                        VersionJson.serializer(),
+                        File(paths.versionDir(pickedId), "$pickedId.json").readText()
+                    )
+                    step("reuse-installed", true, pickedId)
+                } else {
+                    val installer = VersionInstaller(paths, mirrors = settings.mirrors())
+                    val manifest = installer.fetchManifest()
+                    step("manifest", manifest.versions.isNotEmpty(), "count=${manifest.versions.size}")
+                    val target = manifest.versions.first { it.type == "release" }
+                    versionId = target.id
+                    versionJson = installer.fetchVersionJson(target)
+                    step("versionjson", versionJson.mainClass.isNotEmpty(), "id=${versionJson.id}")
+                    installer.install(target.id, target.url, object : ProgressListener {
+                        override fun onProgress(progress: InstallProgress) {}
+                    }, includeAssets = false)
+                    step("download-libs-client", true, target.id)
+                }
 
                 val store = InstanceStore(appContext)
                 val instId = "inst-autotest-" + System.currentTimeMillis()
                 store.upsert(
                     Instance(
                         id = instId,
-                        name = "AutoTest " + target.id,
-                        versionId = target.id,
+                        name = "AutoTest " + versionId,
+                        versionId = versionId,
                         loader = "vanilla",
                         javaMajor = 21
                     )
@@ -92,7 +107,7 @@ object AutoTestBridge {
                 launcher.prepare(runtime!!, File(paths.root, "autotest"), paths.temp)
 
                 val resolver = VersionResolver(paths)
-                val merged = resolver.loadMerged(target.id)
+                val merged = resolver.loadMerged(versionId)
                 val classpath = resolver.buildClasspath(merged, com.mcbox.core.PlatformInfo.android())
                 val account = Account(
                     id = AccountUuid.fromOfflineName("AutoTester"),
@@ -105,12 +120,12 @@ object AutoTestBridge {
                 val exit = launcher.launch(
                     runtime = runtime,
                     config = com.mcbox.core.launch.LaunchConfig(
-                        versionId = target.id,
+                        versionId = versionId,
                         versionJson = merged,
                         gameDir = File(paths.root, "autotest"),
                         assetsDir = paths.assets,
                         librariesDir = paths.libraries,
-                        nativesDir = paths.nativeDir(target.id),
+                        nativesDir = paths.nativeDir(versionId),
                         classpath = classpath,
                         account = account,
                         maxMemoryMb = 1024,
