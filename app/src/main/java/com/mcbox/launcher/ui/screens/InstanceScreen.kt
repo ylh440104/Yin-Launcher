@@ -43,7 +43,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.mcbox.launcher.data.Instance
 import com.mcbox.launcher.data.InstanceStore
+import com.mcbox.launcher.data.DetectedVersion
 import com.mcbox.launcher.data.SettingsStore
+import com.mcbox.launcher.data.VersionScanner
 import com.mcbox.launcher.game.GameActivity
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -60,13 +62,44 @@ fun InstanceScreen() {
     var loading by remember { mutableStateOf(true) }
     var deleteTarget by remember { mutableStateOf<Instance?>(null) }
     var showCreate by remember { mutableStateOf(false) }
+    var detected by remember { mutableStateOf<List<DetectedVersion>>(emptyList()) }
+    var scanning by remember { mutableStateOf(false) }
+    var scanMessage by remember { mutableStateOf("") }
 
     suspend fun reload() {
         instances = withContext(Dispatchers.IO) { store.all() }
         loading = false
     }
 
-    LaunchedEffect(Unit) { reload() }
+    suspend fun autoDetect() {
+        scanning = true
+        try {
+            val found = withContext(Dispatchers.IO) {
+                val paths = com.mcbox.core.GamePaths(File(settings.gameRoot)).ensure()
+                VersionScanner.scan(paths)
+            }
+            detected = found
+            val added = withContext(Dispatchers.IO) {
+                VersionScanner.syncToInstances(store, found)
+            }
+            if (added > 0) {
+                scanMessage = "新发现 $added 个版本"
+                reload()
+            } else if (found.isEmpty()) {
+                scanMessage = "目录里没有已安装版本"
+            } else {
+                scanMessage = "已同步 ${found.size} 个版本"
+            }
+        } catch (t: Throwable) {
+            scanMessage = "扫描失败: ${t.message}"
+        }
+        scanning = false
+    }
+
+    LaunchedEffect(settings.gameRoot) {
+        reload()
+        autoDetect()
+    }
 
     Box(Modifier.fillMaxSize()) {
         Column(Modifier.fillMaxSize()) {
@@ -79,11 +112,19 @@ fun InstanceScreen() {
                 Column(Modifier.weight(1f)) {
                     Text("实例", fontSize = 24.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onBackground)
                     Text(
-                        settings.activeAccount()?.displayName ?: "未登录",
+                        when {
+                            scanning -> "正在扫描目录"
+                            scanMessage.isNotEmpty() -> scanMessage
+                            else -> settings.activeAccount()?.displayName ?: "未登录"
+                        },
                         fontSize = 12.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
+                OutlinedButton(onClick = { scope.launch { autoDetect() } }, enabled = !scanning) {
+                    Text(if (scanning) "扫描中" else "重新扫描")
+                }
+                Spacer(Modifier.width(8.dp))
                 OutlinedButton(onClick = { showCreate = true }) {
                     Text("新建")
                 }

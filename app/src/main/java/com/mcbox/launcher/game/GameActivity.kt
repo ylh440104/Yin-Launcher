@@ -82,7 +82,16 @@ class GameActivity : AppCompatActivity(), GameSurfaceView.Listener {
         val height = surfaceView.height.coerceAtLeast(1)
         if (launched) return
         launched = true
-        JREUtils.setupBridgeWindow(holder.surface)
+        val bridgeOk = try {
+            JREUtils.setupBridgeWindow(holder.surface)
+            true
+        } catch (t: Throwable) {
+            appendStatus("Surface 桥接失败: ${t.javaClass.simpleName}")
+            false
+        }
+        if (!bridgeOk) {
+            return
+        }
         statusView.visibility = View.GONE
         GameBridge.start(this, intent, holder, width, height)
     }

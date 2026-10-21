@@ -13,6 +13,11 @@ public class JREUtils {
 
     private static boolean logStarted = false;
 
+    static {
+        System.loadLibrary("pojavexec");
+        System.loadLibrary("pojavexec_awt");
+    }
+
     public static void beginLog(File logFile) {
         if (logStarted) return;
         try {

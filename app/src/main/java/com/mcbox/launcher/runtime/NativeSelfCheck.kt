@@ -55,18 +55,29 @@ object NativeSelfCheck {
 
         val jreOk = try {
             JREUtils.setLdLibraryPath(nativeLibDir)
+            JREUtils.chdir(nativeLibDir)
+            JREUtils.dlopen("libc.so")
             true
         } catch (t: Throwable) {
-            messages.add("JRE 桥失败: ${t.javaClass.simpleName}")
+            messages.add("JRE 桥失败: ${t.javaClass.simpleName}:${t.message}")
             false
         }
 
         val loggerOk = try {
             CriticalNativeTest.invokeTest()
-            Logger.appendToLog("")
+            Logger.appendToLog("selfcheck\n")
             true
         } catch (t: Throwable) {
-            messages.add("日志桥失败: ${t.javaClass.simpleName}")
+            messages.add("日志桥失败: ${t.javaClass.simpleName}:${t.message}")
+            false
+        }
+
+        val surfaceBridgeOk = try {
+            JREUtils::class.java.getMethod("setupBridgeWindow", Any::class.java)
+            JREUtils::class.java.getMethod("releaseBridgeWindow")
+            true
+        } catch (t: Throwable) {
+            messages.add("Surface 桥方法缺失")
             false
         }
 
@@ -80,7 +91,7 @@ object NativeSelfCheck {
 
         val text = if (messages.isEmpty()) "原生库自检通过" else messages.joinToString(" | ")
         return NativeCheckResult(
-            libsLoaded = libsLoaded && vmLibOk,
+            libsLoaded = libsLoaded && vmLibOk && surfaceBridgeOk,
             inputBridgeOk = inputOk,
             callbackBridgeOk = callbackOk,
             jreUtilsOk = jreOk,
