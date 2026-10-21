@@ -291,6 +291,8 @@ jobs:
           cat crash.txt | head -40
           adb logcat -d | grep -E 'GameBridge|McBoxJRE|McBoxJava|YinAutoTest' > bridge.txt || true
           cat bridge.txt | head -40
+          adb pull /storage/emulated/0/Android/data/com.mcbox.launcher/files/mcbox/logs/autotest.log autotest-jvm.log 2>/dev/null || true
+          cat autotest-jvm.log 2>/dev/null | tail -40 || true
           SCRIPT
           chmod +x verify.sh
 
