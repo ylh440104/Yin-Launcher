@@ -179,31 +179,19 @@ fun AccountScreen() {
 
     if (deviceCode != null) {
         val info = deviceCode!!
-        AlertDialog(
-            onDismissRequest = { },
-            title = { Text("微软登录") },
-            text = {
-                Column {
-                    Text("在浏览器打开下面的网址，输入代码", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Spacer(Modifier.height(10.dp))
-                    Text(info.verificationUri, fontSize = 13.sp, color = MaterialTheme.colorScheme.primary)
-                    Spacer(Modifier.height(10.dp))
-                    Text(info.userCode, fontSize = 26.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
-                    Spacer(Modifier.height(10.dp))
-                    Text(msStatus, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-            },
-            confirmButton = {
-                TextButton(onClick = {
-                    val intent = android.content.Intent(
-                        android.content.Intent.ACTION_VIEW,
-                        android.net.Uri.parse(info.verificationUri)
+        DeviceCodeDialog(
+            info = info,
+            status = msStatus,
+            onOpenBrowser = { uri ->
+                try {
+                    context.startActivity(
+                        android.content.Intent(
+                            android.content.Intent.ACTION_VIEW,
+                            android.net.Uri.parse(uri)
+                        )
                     )
-                    try {
-                        context.startActivity(intent)
-                    } catch (t: Throwable) {
-                    }
-                }) { Text("打开浏览器") }
+                } catch (t: Throwable) {
+                }
             }
         )
     }

@@ -82,15 +82,9 @@ class GameActivity : AppCompatActivity(), GameSurfaceView.Listener {
         val height = surfaceView.height.coerceAtLeast(1)
         if (launched) return
         launched = true
-        val bridgeOk = try {
-            JREUtils.setupBridgeWindow(holder.surface)
-            true
-        } catch (t: Throwable) {
-            appendStatus("Surface 桥接失败: ${t.javaClass.simpleName}")
-            false
-        }
+        val bridgeOk = JREUtils.safeSetupBridgeWindow(holder.surface)
         if (!bridgeOk) {
-            return
+            appendStatus("Surface 桥接不可用，改用软件模式继续")
         }
         statusView.visibility = View.GONE
         GameBridge.start(this, intent, holder, width, height)
@@ -120,7 +114,7 @@ class GameActivity : AppCompatActivity(), GameSurfaceView.Listener {
 
     override fun onDestroy() {
         super.onDestroy()
-        JREUtils.releaseBridgeWindow()
+        JREUtils.safeReleaseBridgeWindow()
     }
 
     fun surfaceWidth() = CallbackBridge.windowWidth
