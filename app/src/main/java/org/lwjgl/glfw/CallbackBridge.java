@@ -171,28 +171,20 @@ public class CallbackBridge {
 
     private static native boolean nativeEnableGamepadDirectInput();
 
-    @dalvik.annotation.optimization.CriticalNative
     public static native boolean nativeSendChar(char codepoint);
 
-    @dalvik.annotation.optimization.CriticalNative
     public static native boolean nativeSendCharMods(char codepoint, int mods);
 
-    @dalvik.annotation.optimization.CriticalNative
     public static native void nativeSendKey(int key, int scancode, int action, int mods);
 
-    @dalvik.annotation.optimization.CriticalNative
     public static native void nativeSendCursorPos(float x, float y);
 
-    @dalvik.annotation.optimization.CriticalNative
     public static native void nativeSendMouseButton(int button, int action, int mods);
 
-    @dalvik.annotation.optimization.CriticalNative
     public static native void nativeSendScroll(double xoffset, double yoffset);
 
-    @dalvik.annotation.optimization.CriticalNative
     public static native void nativeSendScreenSize(int width, int height);
 
-    @dalvik.annotation.optimization.CriticalNative
     public static native void nativeSetUseInputStackQueue(boolean useInputStackQueue);
 
     static {
