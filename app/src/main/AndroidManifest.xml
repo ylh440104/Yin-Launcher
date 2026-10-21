@@ -46,6 +46,14 @@
             android:resizeableActivity="true"
             android:theme="@style/Theme.McBox.Game" />
 
+        <receiver
+            android:name=".game.AutoTestReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="com.mcbox.launcher.AUTOTEST" />
+            </intent-filter>
+        </receiver>
+
         <activity
             android:name="net.kdt.pojavlaunch.ExitActivity"
             android:exported="false"

@@ -163,7 +163,7 @@ jobs:
   arm-device-test:
     needs: build
     runs-on: ubuntu-24.04-arm
-    timeout-minutes: 90
+    timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
 
@@ -189,18 +189,26 @@ jobs:
           adb install -r -t apk/yin-arm64.apk
           adb shell appops set com.mcbox.launcher MANAGE_EXTERNAL_STORAGE allow
           adb shell am start -W -n com.mcbox.launcher/.ui.MainActivity
-          sleep 25
-          adb shell pidof com.mcbox.launcher > pid.txt
-          cat pid.txt
-          adb shell dumpsys activity activities > activity.txt
-          cat activity.txt | grep mcbox
+          sleep 10
+          adb shell am broadcast -a com.mcbox.launcher.AUTOTEST
+          for i in $(seq 1 90); do
+            adb shell run-as com.mcbox.launcher ls files 2>/dev/null | grep -q autotest && break
+            sleep 10
+          done
+          adb shell run-as com.mcbox.launcher cat files/../autotest-result.txt > autotest.txt 2>/dev/null || true
+          adb pull /storage/emulated/0/Android/data/com.mcbox.launcher/files/autotest-result.txt autotest.txt 2>/dev/null || true
+          cat autotest.txt || echo NO_RESULT
           adb shell uiautomator dump /sdcard/ui.xml
           adb pull /sdcard/ui.xml ui.xml
-          grep -o 'text="[^"]*"' ui.xml | head -40
-          adb logcat -d | grep -E 'GameBridge|McBoxJRE|McBoxJava' > bridge.txt || true
-          cat bridge.txt
+          grep -o 'text="[^"]*"' ui.xml | head -30
+          adb shell dumpsys activity activities > activity.txt
+          grep -i mResumedActivity activity.txt | head -3
+          adb shell pidof com.mcbox.launcher > pid.txt
+          cat pid.txt
           adb logcat -d -b crash > crash.txt
-          cat crash.txt
+          cat crash.txt | head -40
+          adb logcat -d | grep -E 'GameBridge|McBoxJRE|McBoxJava|YinAutoTest' > bridge.txt || true
+          cat bridge.txt | head -40
           SCRIPT
           chmod +x verify.sh
 
@@ -217,6 +225,8 @@ jobs:
 
       - name: Verify ARM results
         run: |
+          echo "=== autotest result ==="
+          cat autotest.txt || echo NO_RESULT
           echo "=== pid ==="
           cat pid.txt || true
           echo "=== resumed ==="
@@ -228,7 +238,10 @@ jobs:
           test -s pid.txt
           grep -q 'com.mcbox.launcher/.ui.MainActivity' activity.txt
           if grep -q 'com.mcbox.launcher' crash.txt; then echo "CRASH DETECTED"; exit 1; fi
-          echo "ARM_DEVICE_TEST_PASS"
+          if [ ! -s autotest.txt ]; then echo "AUTOTEST NO RESULT"; exit 1; fi
+          if grep -q 'FAIL' autotest.txt; then echo "AUTOTEST FAILURES"; exit 1; fi
+          if ! grep -q 'FULL_TEST_DONE' autotest.txt; then echo "AUTOTEST INCOMPLETE"; exit 1; fi
+          echo "ARM_FULL_DEVICE_TEST_PASS"
 
       - name: Collect ARM device logs
         if: always()
@@ -241,6 +254,7 @@ jobs:
             pid.txt
             crash.txt
             bridge.txt
+            autotest.txt
           retention-days: 14
           if-no-files-found: ignore
 
