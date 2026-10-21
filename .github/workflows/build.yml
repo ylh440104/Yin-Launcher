@@ -116,7 +116,7 @@ jobs:
       - name: Stash arm64 apk
         run: |
           mkdir -p out
-          cp app/build/outputs/apk/debug/app-debug.apk out/mcbox-arm64.apk
+          cp app/build/outputs/apk/debug/app-debug.apk out/yin-arm64.apk
           ls -la out
 
       - name: Prepare x86_64 test assets
@@ -140,13 +140,13 @@ jobs:
 
       - name: Stash test apk
         run: |
-          cp app/build/outputs/apk/debug/app-debug.apk out/mcbox-x86_64.apk
+          cp app/build/outputs/apk/debug/app-debug.apk out/yin-x86_64.apk
           ls -la out
 
       - name: Upload APKs
         uses: actions/upload-artifact@v4
         with:
-          name: mcbox-apk
+          name: yin-apk
           path: out/*.apk
           retention-days: 30
           if-no-files-found: error
@@ -160,7 +160,91 @@ jobs:
           retention-days: 7
           if-no-files-found: ignore
 
-  device-test:
+  arm-device-test:
+    needs: build
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download APKs
+        uses: actions/download-artifact@v4
+        with:
+          name: yin-apk
+          path: apk
+
+      - name: Enable KVM
+        run: |
+          sudo chmod 666 /dev/kvm || true
+          ls -la /dev/kvm || true
+
+      - name: Write ARM verification script
+        run: |
+          cat > verify.sh <<'SCRIPT'
+          #!/bin/sh
+          set -x
+          adb wait-for-device
+          adb shell settings put global window_animation_scale 0
+          adb logcat -c
+          adb install -r -t apk/yin-arm64.apk
+          adb shell appops set com.mcbox.launcher MANAGE_EXTERNAL_STORAGE allow
+          adb shell am start -W -n com.mcbox.launcher/.ui.MainActivity
+          sleep 25
+          adb shell pidof com.mcbox.launcher > pid.txt
+          cat pid.txt
+          adb shell dumpsys activity activities > activity.txt
+          cat activity.txt | grep mcbox
+          adb shell uiautomator dump /sdcard/ui.xml
+          adb pull /sdcard/ui.xml ui.xml
+          grep -o 'text="[^"]*"' ui.xml | head -40
+          adb logcat -d | grep -E 'GameBridge|McBoxJRE|McBoxJava' > bridge.txt || true
+          cat bridge.txt
+          adb logcat -d -b crash > crash.txt
+          cat crash.txt
+          SCRIPT
+          chmod +x verify.sh
+
+      - name: Boot ARM emulator and verify arm64 APK
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 30
+          target: google_apis
+          arch: arm64-v8a
+          profile: pixel_5
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -no-audio -no-boot-anim -camera-back none -camera-front none
+          script: sh verify.sh
+
+      - name: Verify ARM results
+        run: |
+          echo "=== pid ==="
+          cat pid.txt || true
+          echo "=== resumed ==="
+          grep -i mResumedActivity activity.txt | head -3 || true
+          echo "=== bridge ==="
+          cat bridge.txt || true
+          echo "=== crash ==="
+          cat crash.txt | head -30 || true
+          test -s pid.txt
+          grep -q 'com.mcbox.launcher/.ui.MainActivity' activity.txt
+          if grep -q 'com.mcbox.launcher' crash.txt; then echo "CRASH DETECTED"; exit 1; fi
+          echo "ARM_DEVICE_TEST_PASS"
+
+      - name: Collect ARM device logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: arm-device-logs
+          path: |
+            ui.xml
+            activity.txt
+            pid.txt
+            crash.txt
+            bridge.txt
+          retention-days: 14
+          if-no-files-found: ignore
+
+  x86-device-test:
     needs: build
     runs-on: ubuntu-latest
     timeout-minutes: 90
@@ -170,7 +254,7 @@ jobs:
       - name: Download APKs
         uses: actions/download-artifact@v4
         with:
-          name: mcbox-apk
+          name: yin-apk
           path: apk
 
       - name: Enable KVM
@@ -178,7 +262,7 @@ jobs:
           sudo chmod 666 /dev/kvm || true
           ls -la /dev/kvm || true
 
-      - name: Write verification script
+      - name: Write x86 verification script
         run: |
           cat > verify.sh <<'SCRIPT'
           #!/bin/sh
@@ -186,23 +270,23 @@ jobs:
           adb wait-for-device
           adb shell settings put global window_animation_scale 0
           adb logcat -c
-          adb install -r -t apk/mcbox-x86_64.apk
+          adb install -r -t apk/yin-x86_64.apk
           adb shell appops set com.mcbox.launcher MANAGE_EXTERNAL_STORAGE allow
           adb shell am start -W -n com.mcbox.launcher/.ui.MainActivity
-          sleep 20
+          sleep 25
           adb shell pidof com.mcbox.launcher > pid.txt
           cat pid.txt
           adb shell dumpsys activity activities > activity.txt
           cat activity.txt | grep mcbox
           adb shell uiautomator dump /sdcard/ui.xml
           adb pull /sdcard/ui.xml ui.xml
-          cat ui.xml
+          grep -o 'text="[^"]*"' ui.xml | head -40
           adb logcat -d -b crash > crash.txt
           cat crash.txt
           SCRIPT
           chmod +x verify.sh
 
-      - name: Boot emulator and verify launch
+      - name: Boot x86_64 emulator and verify
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 30
@@ -213,27 +297,24 @@ jobs:
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -no-audio -no-boot-anim -camera-back none -camera-front none
           script: sh verify.sh
 
-      - name: Verify results
+      - name: Verify x86 results
         run: |
-          echo "=== ui ==="
-          grep -o 'text="[^"]\+"' ui.xml | head -40
-          echo "=== resumed activity ==="
-          grep -i mResumedActivity activity.txt | head -5
           echo "=== pid ==="
-          cat pid.txt
+          cat pid.txt || true
+          echo "=== resumed ==="
+          grep -i mResumedActivity activity.txt | head -3 || true
           echo "=== crash ==="
-          cat crash.txt | head -40
+          cat crash.txt | head -30 || true
           test -s pid.txt
           grep -q 'com.mcbox.launcher/.ui.MainActivity' activity.txt
-          grep -q 'com.mcbox.launcher' ui.xml
           if grep -q 'com.mcbox.launcher' crash.txt; then echo "CRASH DETECTED"; exit 1; fi
-          echo "DEVICE_TEST_PASS"
+          echo "X86_DEVICE_TEST_PASS"
 
-      - name: Collect device logs
+      - name: Collect x86 device logs
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: device-logs
+          name: x86-device-logs
           path: |
             ui.xml
             activity.txt

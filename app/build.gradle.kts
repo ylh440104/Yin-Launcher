@@ -21,14 +21,29 @@ android {
         }
     }
 
+    signingConfigs {
+        create("release") {
+            val props = java.util.Properties()
+            val propFile = rootProject.file("app/keystore.properties")
+            if (propFile.exists()) {
+                propFile.inputStream().use { props.load(it) }
+                storeFile = rootProject.file(props.getProperty("KEYSTORE_PATH") ?: "keystore/yin-release.keystore")
+                storePassword = props.getProperty("KEYSTORE_PASSWORD")
+                keyAlias = props.getProperty("KEYSTORE_ALIAS")
+                keyPassword = props.getProperty("KEYSTORE_ALIAS_PASSWORD")
+            }
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = false
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = signingConfigs.getByName("release")
         }
         debug {
             isMinifyEnabled = false
+            signingConfig = signingConfigs.getByName("release")
         }
     }
 
