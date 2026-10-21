@@ -199,17 +199,24 @@ jobs:
         run: |
           set -e
           ls -la apk/
-          unzip -l apk/yin-arm64.apk | grep -E 'lib/arm64-v8a/lib(pojavexec|bytehook|exithook|lwjgl|openal|gl4es|ltw)' | head -20
           unzip -l apk/yin-arm64.apk | grep -c 'lib/arm64-v8a/' | awk '{print "native lib count: " $1}'
-          unzip -l apk/yin-arm64.apk | grep -q 'lib/arm64-v8a/libpojavexec.so'
-          unzip -l apk/yin-arm64.apk | grep -q 'lib/arm64-v8a/libbytehook.so'
-          unzip -l apk/yin-arm64.apk | grep -q 'lib/arm64-v8a/liblwjgl.so'
-          unzip -l apk/yin-arm64.apk | grep -q 'lib/arm64-v8a/libopenal.so'
-          unzip -l apk/yin-arm64.apk | grep -q 'assets/runtime/jre21/universal.tar.xz'
-          unzip -l apk/yin-arm64.apk | grep -q 'assets/runtime/jre21/bin-arm64.tar.xz'
-          unzip -l apk/yin-arm64.apk | grep -q 'assets/components/lwjgl3/lwjgl-glfw-classes.jar'
-          unzip -l apk/yin-arm64.apk | grep -q 'assets/components/caciocavallo17/'
-          file apk/yin-arm64.apk | grep -q 'Zip'
+          check() {
+            if unzip -l apk/yin-arm64.apk | grep -q "$1"; then echo "OK $1"; else echo "MISSING $1"; FAIL=1; fi
+          }
+          FAIL=0
+          check 'lib/arm64-v8a/libpojavexec.so'
+          check 'lib/arm64-v8a/libbytehook.so'
+          check 'lib/arm64-v8a/libexithook.so'
+          check 'lib/arm64-v8a/liblwjgl.so'
+          check 'lib/arm64-v8a/libopenal.so'
+          check 'lib/arm64-v8a/libgl4es_114.so'
+          check 'lib/arm64-v8a/libltw.so'
+          check 'assets/runtime/jre21/universal.tar.xz'
+          check 'assets/runtime/jre21/bin-arm64.tar.xz'
+          check 'assets/components/lwjgl3/lwjgl-glfw-classes.jar'
+          check 'assets/components/caciocavallo17/cacio-shared'
+          check 'assets/components/security/'
+          if [ "$FAIL" = "1" ]; then exit 1; fi
           echo "arm64 APK structure verified"
 
       - name: Check arm64 ELF architecture of native libs
