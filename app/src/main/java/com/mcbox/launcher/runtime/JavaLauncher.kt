@@ -73,8 +73,8 @@ class JavaLauncher(
 
     fun buildLdLibraryPath(runtime: RuntimeInfo): String {
         val sb = StringBuilder()
-        sb.append(File(runtime.home, "lib/jli").absolutePath).append(":")
         sb.append(File(runtime.home, "lib").absolutePath).append(":")
+        sb.append(File(runtime.home, "lib/jli").absolutePath).append(":")
         sb.append(runtime.jvmDir.absolutePath).append(":")
         sb.append(nativeLibDir).append(":")
         sb.append("/system/lib64:/vendor/lib64:/vendor/lib64/hw:/system/lib:/vendor/lib:/vendor/lib/hw")

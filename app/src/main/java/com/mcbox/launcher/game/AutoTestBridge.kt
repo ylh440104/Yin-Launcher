@@ -106,6 +106,11 @@ object AutoTestBridge {
                 )
                 launcher.prepare(runtime!!, File(paths.root, "autotest"), paths.temp)
 
+                val jliLib = File(runtime.home, "lib/libjli.so")
+                val jliPreloaded = jliLib.exists() && net.kdt.pojavlaunch.utils.JREUtils.safeDlopen(jliLib.absolutePath)
+                Log.i(TAG, "libjli preload: path=${jliLib.absolutePath} exists=${jliLib.exists()} ok=$jliPreloaded")
+                step("jli-preload", jliPreloaded)
+
                 val resolver = VersionResolver(paths)
                 val merged = resolver.loadMerged(versionId)
                 val classpath = resolver.buildClasspath(merged, com.mcbox.core.PlatformInfo.android())
