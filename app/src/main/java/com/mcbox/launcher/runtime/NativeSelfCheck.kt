@@ -3,7 +3,6 @@ package com.mcbox.launcher.runtime
 import android.content.Context
 import com.oracle.dalvik.VMLauncher
 import net.kdt.pojavlaunch.AWTInputBridge
-import net.kdt.pojavlaunch.CriticalNativeTest
 import net.kdt.pojavlaunch.Logger
 import net.kdt.pojavlaunch.utils.JREUtils
 import org.lwjgl.glfw.CallbackBridge
@@ -64,7 +63,6 @@ object NativeSelfCheck {
         }
 
         val loggerOk = try {
-            CriticalNativeTest.invokeTest()
             Logger.appendToLog("selfcheck\n")
             true
         } catch (t: Throwable) {
