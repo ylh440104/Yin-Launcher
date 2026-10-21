@@ -196,6 +196,9 @@ public class CallbackBridge {
     public static native void nativeSetUseInputStackQueue(boolean useInputStackQueue);
 
     static {
-        System.loadLibrary("pojavexec");
+        try {
+            System.loadLibrary("pojavexec");
+        } catch (Throwable ignored) {
+        }
     }
 }
