@@ -197,11 +197,32 @@ class MicrosoftAuth(
 
     fun loginWithXbox(uhs: String, xstsToken: String): MinecraftToken {
         val body = """{"identityToken":"XBL3.0 x=$uhs;$xstsToken"}"""
-        val resp = http.postJson(Endpoints.MC_AUTH, body, mapOf("Accept" to "application/json"))
+        val resp = try {
+            http.postJson(Endpoints.MC_AUTH, body, mapOf("Accept" to "application/json"))
+        } catch (e: IOException) {
+            val raw = e.message.orEmpty()
+            throw MicrosoftAuthException(mapMinecraftAuthError(raw))
+        }
         val obj = JsonCompact.parseToJsonElement(resp).jsonObject
-        val access = obj.str("access_token") ?: throw MicrosoftAuthException("no Minecraft token")
+        val access = obj.str("access_token") ?: throw MicrosoftAuthException("Minecraft 未返回 token")
         val expiresIn = obj.int("expires_in", 86400)
         return MinecraftToken(access, System.currentTimeMillis() + expiresIn * 1000L)
+    }
+
+    private fun mapMinecraftAuthError(raw: String): String = when {
+        raw.contains("Invalid app registration") ->
+            "Mojang 拒绝了这个 client id：应用未在 Minecraft 侧登记，需要单独申请白名单。这不是填错 id，设备码阶段能通过也是正常的。可先到设置换用内置 id 试试"
+        raw.contains("HTTP 403") ->
+            "Minecraft 接口返回 403，通常是 client id 未获 Mojang 授权"
+        raw.contains("HTTP 401") ->
+            "Xbox 令牌无效，请重新登录一次"
+        raw.contains("HTTP 429") ->
+            "请求太频繁，等一会儿再试"
+        raw.contains("ineligible") || raw.contains("does not own") ->
+            "该账号没有购买 Minecraft Java 版"
+        raw.contains("UnknownHost") || raw.contains("timeout") || raw.contains("timed out") ->
+            "网络不可用，检查网络后重试"
+        else -> raw.ifBlank { "Minecraft 登录失败" }
     }
 
     fun fetchProfile(mcAccessToken: String): McProfile {
