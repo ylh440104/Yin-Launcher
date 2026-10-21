@@ -33,9 +33,11 @@ public class AWTInputBridge {
     }
 
     static {
-        System.loadLibrary("pojavexec_awt");
+        try {
+            System.loadLibrary("pojavexec_awt");
+        } catch (Throwable ignored) {
+        }
     }
-
     public static native void nativeSendData(int type, int i1, int i2, int i3, int i4);
 
     public static native void nativeClipboardReceived(String data, String mimeTypeSub);
