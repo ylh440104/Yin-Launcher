@@ -107,7 +107,7 @@ object AutoTestBridge {
                 launcher.prepare(runtime!!, File(paths.root, "autotest"), paths.temp)
 
                 val jliLib = File(runtime.home, "lib/libjli.so")
-                val jliPreloaded = jliLib.exists() && net.kdt.pojavlaunch.utils.JREUtils.safeDlopen(jliLib.absolutePath)
+                val jliPreloaded = jliLib.exists() && JREUtils.safeDlopen(jliLib.absolutePath)
                 Log.i(TAG, "libjli preload: path=${jliLib.absolutePath} exists=${jliLib.exists()} ok=$jliPreloaded")
                 step("jli-preload", jliPreloaded)
 
