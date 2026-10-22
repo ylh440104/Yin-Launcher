@@ -139,6 +139,12 @@ class SettingsStore(context: Context) {
             prefs.edit().putString("custom_mirror", value).apply()
         }
 
+    fun paths(): com.mcbox.core.GamePaths =
+        com.mcbox.core.GamePaths(
+            File(gameRoot).also { it.mkdirs() },
+            File(appContext.filesDir, "runtimes").also { it.mkdirs() }
+        ).ensure()
+
     fun mirrors(): List<Mirror> {
         val chosen = MirrorCatalog.byId(downloadSource, customMirrorBase)
         if (chosen.manifestUrl.isEmpty()) {

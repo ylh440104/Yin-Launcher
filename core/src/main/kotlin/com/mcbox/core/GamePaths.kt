@@ -1,15 +1,17 @@
 package com.mcbox.core
 
 import java.io.File
-
-class GamePaths(val root: File) {
+class GamePaths(
+    val root: File,
+    runtimeRoot: File = File(root, "runtimes")
+) {
     val versions: File get() = File(root, "versions")
     val libraries: File get() = File(root, "libraries")
     val assets: File get() = File(root, "assets")
     val indexes: File get() = File(assets, "indexes")
     val objects: File get() = File(assets, "objects")
     val instances: File get() = File(root, "instances")
-    val runtimes: File get() = File(root, "runtimes")
+    val runtimes: File = runtimeRoot
     val natives: File get() = File(root, "natives")
     val logs: File get() = File(root, "logs")
     val temp: File get() = File(root, "temp")

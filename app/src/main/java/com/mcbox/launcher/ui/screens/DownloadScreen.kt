@@ -90,7 +90,7 @@ fun DownloadScreen() {
         try {
             manifest = withContext(Dispatchers.IO) {
                 VersionInstaller(
-                    GamePaths(File(settings.gameRoot)).ensure(),
+                    settings.paths(),
                     mirrors = mirrorList()
                 ).fetchManifest()
             }
@@ -192,7 +192,7 @@ fun DownloadScreen() {
                                 try {
                                     manifest = withContext(Dispatchers.IO) {
                                         VersionInstaller(
-                                            GamePaths(File(settings.gameRoot)).ensure(),
+                                            settings.paths(),
                                             mirrors = mirrorList()
                                         ).fetchManifest()
                                     }
@@ -409,7 +409,7 @@ private fun VersionRow(
 
 @Composable
 private fun InstalledList(settings: SettingsStore) {
-    val paths = remember(settings.gameRoot) { GamePaths(File(settings.gameRoot)).ensure() }
+    val paths = remember(settings.gameRoot) { settings.paths() }
     val versions = remember(settings.gameRoot) {
         paths.versions.listFiles()
             ?.filter { it.isDirectory }
@@ -570,7 +570,7 @@ private fun installVersion(
     onProgress: (InstallProgress) -> Unit,
     onLog: (String) -> Unit
 ) {
-    val paths = GamePaths(File(settings.gameRoot)).ensure()
+    val paths = settings.paths()
     val installer = VersionInstaller(paths, mirrors = settings.mirrors())
     val listener = object : ProgressListener {
         override fun onProgress(progress: InstallProgress) = onProgress(progress)

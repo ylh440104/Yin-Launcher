@@ -96,15 +96,19 @@ public class JREUtils {
         });
     }
 
+    public static volatile String lastDlopenError = "";
+
     public static boolean safeDlopen(String path) {
         final String value = path;
         final boolean[] ok = new boolean[] { false };
-        call("dlopen", new Runnable() {
-            @Override
-            public void run() {
-                ok[0] = dlopen(value);
-            }
-        });
+        if (!ensureLibraries()) { lastDlopenError = "libs-not-ready"; return false; }
+        try {
+            ok[0] = dlopen(value);
+            if (!ok[0]) lastDlopenError = "dlopen-returned-false:" + value;
+        } catch (Throwable t) {
+            lastDlopenError = t.getClass().getSimpleName() + ":" + t.getMessage() + ":" + value;
+            Log.w(TAG, "dlopen failed " + value, t);
+        }
         return ok[0];
     }
 

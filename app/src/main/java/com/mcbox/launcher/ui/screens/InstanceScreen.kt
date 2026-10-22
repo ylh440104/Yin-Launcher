@@ -75,7 +75,7 @@ fun InstanceScreen() {
         scanning = true
         try {
             val found = withContext(Dispatchers.IO) {
-                val paths = com.mcbox.core.GamePaths(File(settings.gameRoot)).ensure()
+                val paths = settings.paths()
                 VersionScanner.scan(paths)
             }
             detected = found
@@ -185,7 +185,7 @@ fun InstanceScreen() {
                 TextButton(onClick = {
                     scope.launch {
                         store.remove(target.id)
-                        val paths = com.mcbox.core.GamePaths(File(settings.gameRoot)).ensure()
+                        val paths = settings.paths()
                         File(paths.instances, target.id).deleteRecursively()
                         deleteTarget = null
                         reload()
@@ -204,7 +204,7 @@ fun InstanceScreen() {
             onCreate = { name, versionId, loader, loaderVersion ->
                 scope.launch {
                     val javaMajor = withContext(Dispatchers.IO) {
-                        val paths = com.mcbox.core.GamePaths(File(settings.gameRoot)).ensure()
+                        val paths = settings.paths()
                         val resolver = com.mcbox.core.launch.VersionResolver(paths)
                         try {
                             resolver.requiredJavaMajor(resolver.loadMerged(versionId))

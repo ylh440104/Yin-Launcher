@@ -39,7 +39,7 @@ object AutoTestBridge {
 
             try {
                 val settings = SettingsStore(appContext)
-                val paths = GamePaths(File(settings.gameRoot)).ensure()
+                val paths = settings.paths()
 
                 step("mkdirs", true, settings.gameRoot)
 
@@ -109,7 +109,8 @@ object AutoTestBridge {
                 val jliLib = File(runtime.home, "lib/libjli.so")
                 val jliPreloaded = jliLib.exists() && JREUtils.safeDlopen(jliLib.absolutePath)
                 Log.i(TAG, "libjli preload: path=${jliLib.absolutePath} exists=${jliLib.exists()} ok=$jliPreloaded")
-                step("jli-preload", jliPreloaded)
+                step("jli-preload", jliPreloaded, JREUtils.lastDlopenError)
+                step("ld-library-path", true, System.getenv("LD_LIBRARY_PATH") ?: "null")
 
                 val resolver = VersionResolver(paths)
                 val merged = resolver.loadMerged(versionId)

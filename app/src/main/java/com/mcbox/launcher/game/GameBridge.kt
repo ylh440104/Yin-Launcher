@@ -34,8 +34,7 @@ object GameBridge {
             return
         }
 
-        val root = File(settings.gameRoot)
-        val paths = GamePaths(root).ensure()
+        val paths = settings.paths()
         val javaMajor = intent.getIntExtra(GameActivity.EXTRA_JAVA_MAJOR, instance.javaMajor)
         val memory = intent.getIntExtra(GameActivity.EXTRA_MEMORY, settings.memoryMb)
         val renderer = intent.getStringExtra(GameActivity.EXTRA_RENDERER) ?: settings.renderer

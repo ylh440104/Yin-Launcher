@@ -44,7 +44,7 @@ fun CreateInstanceDialog(
 
     LaunchedEffect(Unit) {
         versions = withContext(Dispatchers.IO) {
-            val paths = GamePaths(File(settings.gameRoot)).ensure()
+            val paths = settings.paths()
             paths.versions.listFiles()?.filter { it.isDirectory }?.map { it.name }?.sorted().orEmpty()
         }
         selected = versions.firstOrNull().orEmpty()

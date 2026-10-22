@@ -73,7 +73,7 @@ fun SettingsScreen() {
     var showDirDialog by remember { mutableStateOf(false) }
     var dirInput by remember { mutableStateOf(settings.gameRoot) }
 
-    val paths = remember(gameRoot) { GamePaths(File(gameRoot)).ensure() }
+    val paths = remember(gameRoot) { settings.paths() }
     val runtimeManager = remember(context, gameRoot) { RuntimeManager(context, paths.runtimes) }
 
     fun refreshRuntimes() {
