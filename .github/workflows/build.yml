@@ -203,7 +203,11 @@ jobs:
           cd work
           curl -sf --retry 3 -o manifest.json "https://bmclapi2.bangbang93.com/mc/game/version_manifest_v2.json" || curl -sf --retry 3 -o manifest.json "https://piston-meta.mojang.com/mc/game/version_manifest_v2.json"
           VERSION_URL=$(python3 -c "import json;m=json.load(open('manifest.json'));print([x['url'] for x in m['versions'] if x['id']=='1.21.11'][0])")
-          curl -sf --retry 3 -o v.json "$VERSION_URL"
+          curl -sf --retry 3 -o v.json "$VERSION_URL" || curl -sf --retry 3 -o v.json "https://piston-meta.mojang.com/v1/packages/$(python3 -c "import json,hashlib;m=json.load(open('manifest.json'));u=[x['url'] for x in m['versions'] if x['id']=='1.21.11'][0];print(u.split('/packages/')[1])")" || true
+          if ! python3 -c "import json;json.load(open('v.json'))" 2>/dev/null; then
+            curl -sf --retry 3 -o v.json "https://bmclapi2.bangbang93.com/version/1.21.11/json" || true
+          fi
+          python3 -c "import json;v=json.load(open('v.json'));assert v['mainClass']" || { echo "CANNOT FETCH VERSION JSON"; exit 1; }
           MAIN=$(python3 -c "import json;print(json.load(open('v.json'))['mainClass'])")
           LIBCOUNT=$(python3 -c "import json;print(len(json.load(open('v.json'))['libraries']))")
           echo "mainClass: $MAIN / libraries: $LIBCOUNT"
