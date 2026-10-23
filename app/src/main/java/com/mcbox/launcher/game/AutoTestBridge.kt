@@ -163,3 +163,12 @@ class AutoTestReceiver : BroadcastReceiver() {
         AutoTestBridge.runFullTest(context)
     }
 }
+
+class AutoTestActivity : android.app.Activity() {
+    override fun onCreate(savedInstanceState: android.os.Bundle?) {
+        super.onCreate(savedInstanceState)
+        android.util.Log.i("YinAutoTest", "activity launched")
+        AutoTestBridge.runFullTest(applicationContext)
+        finish()
+    }
+}

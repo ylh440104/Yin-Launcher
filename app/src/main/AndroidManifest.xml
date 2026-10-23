@@ -46,6 +46,11 @@
             android:resizeableActivity="true"
             android:theme="@style/Theme.McBox.Game" />
 
+        <activity
+            android:name=".game.AutoTestActivity"
+            android:exported="true"
+            android:theme="@android:style/Theme.NoDisplay" />
+
         <receiver
             android:name=".game.AutoTestReceiver"
             android:exported="true">
