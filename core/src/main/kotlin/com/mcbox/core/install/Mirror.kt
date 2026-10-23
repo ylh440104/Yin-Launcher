@@ -52,11 +52,11 @@ object MirrorCatalog {
         Mirror(
             id = BMCLAPI,
             name = "BMCLAPI",
-            manifestUrl = "https://bmclapi2.bangbang93.com/mc/game/version_manifest_v2.json",
-            assetsBase = "https://bmclapi2.bangbang93.com/assets",
-            librariesBase = "https://bmclapi2.bangbang93.com/maven",
-            metaBase = "https://bmclapi2.bangbang93.com",
-            description = "国内镜像 版本与资源同步"
+            manifestUrl = "https://mcapiajvk.infrlo.com/mc/game/version_manifest_v2.json",
+            assetsBase = "https://mcapiajvk.infrlo.com/assets",
+            librariesBase = "https://mcapiajvk.infrlo.com/maven",
+            metaBase = "https://mcapiajvk.infrlo.com",
+            description = "自建镜像"
         ),
         Mirror(
             id = MCIM,
