@@ -212,7 +212,8 @@ jobs:
           LIBCOUNT=$(python3 -c "import json;print(len(json.load(open('v.json'))['libraries']))")
           echo "mainClass: $MAIN / libraries: $LIBCOUNT"
           CLIENT_URL=$(python3 -c "import json;print(json.load(open('v.json'))['downloads']['client']['url'])")
-          curl -sfL --retry 3 -o client.jar "$CLIENT_URL"
+          curl -sfL --retry 3 -o client.jar "$CLIENT_URL" || curl -sfL --retry 3 -o client.jar "https://bmclapi2.bangbang93.com/version/1.21.11/client"
+          test -s client.jar || { echo "CLIENT JAR EMPTY"; exit 1; }
           ls -la client.jar
           MAINPATH=$(echo $MAIN | tr '.' '/')'.class'
           unzip -l client.jar | grep -q "$MAINPATH" && echo "main class FOUND: $MAINPATH" || { echo "MAIN CLASS MISSING"; exit 1; }
