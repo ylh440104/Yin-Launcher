@@ -31,7 +31,7 @@ jobs:
         with:
           name: pojav-payload
           path: payload/pojav.apk
-          retention-days: 3
+          retention-days: 1
 
   core-test:
     runs-on: ubuntu-latest
@@ -66,7 +66,7 @@ jobs:
           path: |
             core/build/reports/tests/**
             core/build/test-results/**
-          retention-days: 14
+          retention-days: 5
           if-no-files-found: ignore
 
   build:
@@ -148,7 +148,7 @@ jobs:
         with:
           name: yin-apk
           path: out/*.apk
-          retention-days: 30
+          retention-days: 10
           if-no-files-found: error
 
       - name: Upload build reports
@@ -238,7 +238,7 @@ jobs:
           name: arm-device-logs
           path: |
             arm-verify.txt
-          retention-days: 14
+          retention-days: 5
           if-no-files-found: ignore
 
   x86-device-test:
@@ -339,5 +339,5 @@ jobs:
             crash.txt
             bridge.txt
             autotest.txt
-          retention-days: 14
+          retention-days: 5
           if-no-files-found: ignore
