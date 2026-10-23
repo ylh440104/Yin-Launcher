@@ -194,42 +194,22 @@ jobs:
           file jre/lib/libjli.so | grep -q aarch64 || file jre/lib/libjli.so | grep -q 'ARM aarch64' || { file jre/lib/libjli.so; exit 1; }
           echo "ARM_JRE_NATIVE_PASS"
 
-      - name: Verify game main class exists in client jar after downloading libraries
+      - name: Verify game main class exists in client jar
         run: |
           set -e
           cd work
-          java -jar ../../apk/yin-arm64.apk 2>/dev/null && true || true
-          echo "=== fetch 1.21.11 version json ==="
-          curl -s --retry 3 -o v.json "https://bmclapi2.bangbang93.com/version/1.21.11/json" || curl -s --retry 3 -o v.json "https://piston-meta.mojang.com/mc/game/version_manifest_v2.json"
-          python3 - <<'PY'
-import json,urllib.request
-try:
-    v=json.load(open('v.json'))
-    if 'arguments' not in v:
-        raise Exception('not a version json')
-    print('mainClass:', v['mainClass'])
-    libs=[l for l in v['libraries']]
-    print('libraries:', len(libs))
-    open('mainclass.txt','w').write(v['mainClass'])
-except Exception as e:
-    # fallback: resolve via manifest
-    m=json.load(urllib.request.urlopen('https://bmclapi2.bangbang93.com/mc/game/version_manifest_v2.json'))
-    url=[x['url'] for x in m['versions'] if x['id']=='1.21.11'][0]
-    v=json.load(urllib.request.urlopen(url))
-    print('mainClass:', v['mainClass'])
-    print('libraries:', len(v['libraries']))
-    open('mainclass.txt','w').write(v['mainClass'])
-PY
-          echo "=== download client jar ==="
-          CLIENT_URL=$(python3 -c "import json;v=json.load(open('v.json'));print(v['downloads']['client']['url'])" 2>/dev/null || echo "https://bmclapi2.bangbang93.com/version/1.21.11/client")
+          curl -s --retry 3 -o manifest.json "https://bmclapi2.bangbang93.com/mc/game/version_manifest_v2.json" || curl -s --retry 3 -o manifest.json "https://piston-meta.mojang.com/mc/game/version_manifest_v2.json"
+          VERSION_URL=$(python3 -c "import json;m=json.load(open('manifest.json'));print([x['url'] for x in m['versions'] if x['id']=='1.21.11'][0])")
+          curl -s --retry 3 -o v.json "$VERSION_URL"
+          MAIN=$(python3 -c "import json;print(json.load(open('v.json'))['mainClass'])")
+          LIBCOUNT=$(python3 -c "import json;print(len(json.load(open('v.json'))['libraries']))")
+          echo "mainClass: $MAIN / libraries: $LIBCOUNT"
+          CLIENT_URL=$(python3 -c "import json;print(json.load(open('v.json'))['downloads']['client']['url'])")
           curl -sL --retry 3 -o client.jar "$CLIENT_URL"
           ls -la client.jar
-          MAIN=$(cat mainclass.txt)
-          echo "=== verify main class inside client jar ==="
           MAINPATH=$(echo $MAIN | tr '.' '/')'.class'
           unzip -l client.jar | grep -q "$MAINPATH" && echo "main class FOUND: $MAINPATH" || { echo "MAIN CLASS MISSING"; exit 1; }
-          echo "=== verify jre can load lwjgl-style native handling (JNI onload path) ==="
-          jre/bin/java -Xmx512m -version 2>&1
+          ./jre/bin/java -Xmx512m -version 2>&1
           echo "ARM_GAME_ASSETS_PASS"
 
       - name: Summary
