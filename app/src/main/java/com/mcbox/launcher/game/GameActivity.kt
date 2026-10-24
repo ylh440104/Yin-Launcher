@@ -55,6 +55,7 @@ class GameActivity : AppCompatActivity(), GameSurfaceView.Listener {
             textSize = 13f
             setPadding(24, 24, 24, 24)
             text = "正在启动"
+            visibility = View.GONE
         }
         root.addView(
             statusView,
@@ -63,6 +64,7 @@ class GameActivity : AppCompatActivity(), GameSurfaceView.Listener {
                 FrameLayout.LayoutParams.WRAP_CONTENT
             )
         )
+        LoadingOverlay.attach(this, root)
         setContentView(root)
     }
 
@@ -95,15 +97,20 @@ class GameActivity : AppCompatActivity(), GameSurfaceView.Listener {
 
     fun appendStatus(text: String) {
         runOnUiThread {
-            statusView.visibility = View.VISIBLE
+            LoadingOverlay.setText(text)
             statusView.append("\n$text")
         }
     }
-
     fun onGameExit(code: Int) {
         runOnUiThread {
+            LoadingOverlay.hide()
             statusView.visibility = View.VISIBLE
             statusView.text = "游戏已退出，代码 $code"
+        }
+    }
+    fun onGameReady() {
+        runOnUiThread {
+            LoadingOverlay.hide()
         }
     }
 

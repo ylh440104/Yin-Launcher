@@ -116,6 +116,9 @@ object GameBridge {
                 launcher.bigCoreAffinity = settings.bigCore
 
                 activity.appendStatus("启动 JVM (Java ${runtime.javaMajor})")
+                android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+                    activity.onGameReady()
+                }, 15000)
                 val logFile = File(paths.logs, "game-${System.currentTimeMillis()}.log")
                 val exit = launcher.launch(
                     runtime = runtime,
@@ -128,6 +131,7 @@ object GameBridge {
                 activity.onGameExit(exit)
             } catch (t: Throwable) {
                 JREUtils.appendLog("launch failed: ${t.stackTraceToString()}")
+                activity.onGameExit(-2)
                 activity.appendStatus("启动失败: ${t.message}")
             }
         }.apply {
