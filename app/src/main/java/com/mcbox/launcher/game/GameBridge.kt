@@ -65,7 +65,7 @@ object GameBridge {
                 }
                 activity.appendStatus("加载 JVM 库")
                 JavaLauncher(activity.applicationContext, activity.applicationInfo.nativeLibraryDir)
-                    .initJavaRuntime(runtime)
+                    .loadJvmLibrariesQuiet(runtime)
                 CallbackBridge.sendUpdateWindowSize(width, height)
                 activity.appendStatus("解析版本 ${instance.versionId}")
                 val resolver = VersionResolver(paths)
@@ -121,6 +121,7 @@ object GameBridge {
                 }, 15000)
                 val logFile = File(paths.logs, "game-${System.currentTimeMillis()}.log")
                 val exit = launcher.launch(
+                    activity = activity,
                     runtime = runtime,
                     config = config,
                     resolver = resolver,

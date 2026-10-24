@@ -104,7 +104,7 @@ object AutoTestBridge {
                     appContext,
                     appContext.applicationInfo.nativeLibraryDir
                 )
-                launcher.prepare(runtime!!, File(paths.root, "autotest"), paths.temp)
+                launcher.initJreHome(runtime!!, File(paths.root, "autotest"), paths.temp)
 
                 val jliLib = File(runtime.home, "lib/libjli.so")
                 val jliPreloaded = jliLib.exists() && JREUtils.safeDlopen(jliLib.absolutePath)
@@ -124,6 +124,7 @@ object AutoTestBridge {
                 )
 
                 val exit = launcher.launch(
+                    activity = null,
                     runtime = runtime,
                     config = com.mcbox.core.launch.LaunchConfig(
                         versionId = versionId,
