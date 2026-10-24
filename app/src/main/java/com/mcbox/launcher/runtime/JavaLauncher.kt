@@ -62,7 +62,7 @@ class JavaLauncher(
 
         JREUtils.ensureLoaded()
         JREUtils.beginLog(logFile)
-        net.kdt.pojavlaunch.Logger.appendToLog("launching via pojav chain: $jreHome\n")
+        JREUtils.appendLog("launching via pojav chain: $jreHome\n")
 
         val builder = ArgumentBuilder()
 

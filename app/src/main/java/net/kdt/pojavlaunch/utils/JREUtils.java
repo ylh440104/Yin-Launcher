@@ -512,6 +512,15 @@ public class JREUtils {
     // Obtain AWT screen pixels to render on Android SurfaceView
     public static native int[] renderAWTScreenFrame(/* Object canvas, int width, int height */);
 
+    public static boolean safeDlopen(String path) {
+        try { return dlopen(path); } catch (Throwable t) { return false; }
+    }
+    public static boolean safeSetupBridgeWindow(Object surface) {
+        try { setupBridgeWindow(surface); return true; } catch (Throwable t) { return false; }
+    }
+    public static boolean safeReleaseBridgeWindow() {
+        try { releaseBridgeWindow(); return true; } catch (Throwable t) { return false; }
+    }
     public static synchronized void ensureLoaded() {
         try { System.loadLibrary("exithook"); } catch (Throwable ignored) {}
         try { System.loadLibrary("pojavexec"); } catch (Throwable ignored) {}
