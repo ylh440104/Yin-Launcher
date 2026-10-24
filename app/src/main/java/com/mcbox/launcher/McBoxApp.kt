@@ -16,6 +16,6 @@ class McBoxApp : Application() {
 
     companion object {
         lateinit var instance: McBoxApp
-            private set
+        @JvmStatic fun getAppNativeLibDir(): String = instance.applicationInfo.nativeLibraryDir
     }
 }

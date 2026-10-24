@@ -100,7 +100,7 @@ public class JREUtils {
 
     public static String NATIVE_LIB_DIR() {
         try {
-            return com.mcbox.launcher.McBoxApp.instance.getApplicationInfo().nativeLibraryDir;
+            return App.getAppNativeLibDir();
         } catch (Throwable t) {
             return "/data/app";
         }
