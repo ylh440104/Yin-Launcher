@@ -35,7 +35,7 @@ object LoadingOverlay {
             setTextColor(0xFFDDDDDD.toInt())
             textSize = 14f
             setPadding(0, 24, 0, 0)
-            text = "正在加载"
+            setText("正在加载")
         }
         val tip = TextView(ctx).apply {
             setTextColor(0xFF888888.toInt())
