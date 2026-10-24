@@ -41,7 +41,7 @@ object LoadingOverlay {
             setTextColor(0xFF888888.toInt())
             textSize = 11f
             setPadding(0, 8, 0, 0)
-            text = "首次启动需要解压运行时和校验资源，可能需要几分钟"
+            setText("首次启动需要解压运行时和校验资源，可能需要几分钟")
         }
         box.addView(bar)
         box.addView(text)
