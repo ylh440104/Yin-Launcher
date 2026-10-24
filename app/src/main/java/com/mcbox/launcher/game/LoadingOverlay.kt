@@ -46,7 +46,6 @@ object LoadingOverlay {
         box.addView(bar)
         box.addView(text)
         box.addView(tip)
-        box.gravity = Gravity.CENTER
 
         root.addView(
             box,
