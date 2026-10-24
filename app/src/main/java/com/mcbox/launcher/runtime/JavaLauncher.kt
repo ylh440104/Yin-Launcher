@@ -35,8 +35,8 @@ class JavaLauncher(
     fun buildEnvironment(runtime: RuntimeInfo, gameDir: File, cacheDir: File): Map<String, String> {
         val env = LinkedHashMap<String, String>()
 
-        val libPath = buildLdLibraryPath(runtime)
-        JREUtils.LD_LIBRARY_PATH = libPath
+        relocateLibPath(runtime)
+        val libPath = JREUtils.LD_LIBRARY_PATH
 
         env["POJAV_NATIVEDIR"] = nativeLibDir
         env["JAVA_HOME"] = runtime.home.absolutePath
@@ -71,14 +71,15 @@ class JavaLauncher(
         return env
     }
 
-    fun buildLdLibraryPath(runtime: RuntimeInfo): String {
-        val sb = StringBuilder()
-        sb.append(File(runtime.home, "lib").absolutePath).append(":")
-        sb.append(File(runtime.home, "lib/jli").absolutePath).append(":")
-        sb.append(runtime.jvmDir.absolutePath).append(":")
-        sb.append(nativeLibDir).append(":")
-        sb.append("/system/lib64:/vendor/lib64:/vendor/lib64/hw:/system/lib:/vendor/lib:/vendor/lib/hw")
-        return sb.toString()
+    fun relocateLibPath(runtime: RuntimeInfo) {
+        val ld = StringBuilder()
+        ld.append(runtime.home.absolutePath).append("/")
+        ld.append(JREUtils.DIRNAME_HOME_JRE).append("/jli:")
+        ld.append(runtime.home.absolutePath).append("/").append(JREUtils.DIRNAME_HOME_JRE).append(":")
+        ld.append(runtime.jvmDir.absolutePath).append(":")
+        ld.append("/system/lib64:/vendor/lib64:/vendor/lib64/hw:")
+        ld.append(nativeLibDir)
+        JREUtils.LD_LIBRARY_PATH = ld.toString()
     }
 
     fun applyEnvironment(env: Map<String, String>) {
@@ -91,39 +92,18 @@ class JavaLauncher(
         }
     }
 
-    fun loadJvmLibraries(runtime: RuntimeInfo) {
-        val jvmLib = runtime.jvmLibrary
-        Log.i(TAG, "jvm library: ${jvmLib.absolutePath} exists=${jvmLib.exists()}")
-        JREUtils.safeDlopen(File(runtime.home, "lib/jli/libjli.so").absolutePath)
-        if (!JREUtils.safeDlopen(jvmLib.absolutePath)) {
-            JREUtils.safeDlopen("libjvm.so")
-        }
-        listOf(
-            "libverify.so", "libjava.so", "libnet.so", "libnio.so",
-            "libawt.so", "libawt_headless.so", "libfreetype.so", "libfontmanager.so",
-            "libjimage.so", "libzip.so", "libjsig.so", "libmanagement.so"
-        ).forEach { name ->
-            val candidates = listOf(
-                File(runtime.home, "lib/$name"),
-                File(runtime.jvmDir, name),
-                File(nativeLibDir, name)
-            )
-            for (candidate in candidates) {
-                if (candidate.exists()) {
-                    JREUtils.safeDlopen(candidate.absolutePath)
-                    break
-                }
-            }
-        }
-        val ftNative = File(nativeLibDir, "libfreetype.so")
-        if (ftNative.exists()) JREUtils.safeDlopen(ftNative.absolutePath)
-        val openal = File(nativeLibDir, "libopenal.so")
-        if (openal.exists()) JREUtils.safeDlopen(openal.absolutePath)
+    fun initJavaRuntime(runtime: RuntimeInfo) {
+        val jreHome = runtime.home.absolutePath
+        JREUtils.jvmLibraryPath = runtime.jvmDir.absolutePath
+        JREUtils.relocateLibPath(jreHome)
+        Log.i(TAG, "LD_LIBRARY_PATH=${JREUtils.LD_LIBRARY_PATH}")
+        JREUtils.safeSetLdLibraryPath(JREUtils.jvmLibraryPath + ":" + JREUtils.LD_LIBRARY_PATH)
+        JREUtils.initJavaRuntime(jreHome)
     }
 
     fun loadJvmLibrariesQuiet(runtime: RuntimeInfo) {
         try {
-            loadJvmLibraries(runtime)
+            initJavaRuntime(runtime)
         } catch (t: Throwable) {
             Log.w(TAG, "native preload failed", t)
         }
@@ -133,8 +113,7 @@ class JavaLauncher(
         if (prepared) return
         val env = buildEnvironment(runtime, gameDir, cacheDir)
         applyEnvironment(env)
-        JREUtils.safeSetLdLibraryPath(buildLdLibraryPath(runtime))
-        loadJvmLibraries(runtime)
+        initJavaRuntime(runtime)
         JREUtils.safeSetupExitMethod(context.applicationContext)
         prepared = true
     }
@@ -148,7 +127,6 @@ class JavaLauncher(
         logFile: File
     ): Int {
         prepare(runtime, gameDir, cacheDir)
-
         JREUtils.beginLog(logFile)
         JREUtils.safeInitializeHooks()
         JREUtils.safeChdir(gameDir.absolutePath)

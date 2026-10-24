@@ -65,7 +65,7 @@ object GameBridge {
                 }
                 activity.appendStatus("加载 JVM 库")
                 JavaLauncher(activity.applicationContext, activity.applicationInfo.nativeLibraryDir)
-                    .loadJvmLibrariesQuiet(runtime)
+                    .initJavaRuntime(runtime)
                 CallbackBridge.sendUpdateWindowSize(width, height)
                 activity.appendStatus("解析版本 ${instance.versionId}")
                 val resolver = VersionResolver(paths)
