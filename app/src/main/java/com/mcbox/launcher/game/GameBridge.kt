@@ -126,7 +126,7 @@ object GameBridge {
                     config = config,
                     resolver = resolver,
                     gameDir = instanceDir,
-                    cacheDir = paths.temp,
+                    cacheDir = activity.cacheDir,
                     logFile = logFile
                 )
                 exited.set(true)

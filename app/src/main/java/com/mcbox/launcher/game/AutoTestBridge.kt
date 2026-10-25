@@ -141,7 +141,7 @@ object AutoTestBridge {
                     ),
                     resolver = resolver,
                     gameDir = File(paths.root, "autotest"),
-                    cacheDir = paths.temp,
+                    cacheDir = context.cacheDir,
                     logFile = File(paths.logs, "autotest.log")
                 )
                 step("jvm-launched", exit >= 0, "exit=$exit")
