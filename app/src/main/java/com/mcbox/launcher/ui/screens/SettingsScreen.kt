@@ -389,7 +389,6 @@ fun SettingsScreen() {
                                     val m = zc.getMethod("launchWithUtils", android.content.Context::class.java, String::class.java, String::class.java, String::class.java, List::class.java, String::class.java, Runnable::class.java)
                                     val th = Thread {
                                         try { m.invoke(null, context, "arm64-v8a", rt.home.absolutePath, context.filesDir.absolutePath + "/mcbox", listOf("-version"), "", null) } catch (t: Throwable) { android.util.Log.w("JvmTest", "probe failed", t) }
-n                                    }
                                     th.name = "jvm-probe"
                                     th.start()
                                     "JVM -version 测试已启动，10 秒后看 files/mcbox/jvm-console.txt"
