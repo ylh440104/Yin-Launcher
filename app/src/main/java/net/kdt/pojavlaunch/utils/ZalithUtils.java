@@ -1,7 +1,6 @@
 package net.kdt.pojavlaunch.utils;
 
-import static net.kdt.pojavlaunch.Architecture.ARCH_X86;
-import static net.kdt.pojavlaunch.Architecture.is64BitsDevice;
+import net.kdt.pojavlaunch.Architecture;
 
 import android.content.Context;
 import android.os.Build;
@@ -80,7 +79,7 @@ public class ZalithUtils {
 
     public static void relocateLibPath(String jreArch, String jreHome) {
         String JRE_ARCHITECTURE = jreArch == null ? "arm64-v8a" : jreArch;
-        if (Architecture.archAsInt(JRE_ARCHITECTURE) == ARCH_X86) {
+        if (Architecture.archAsInt(JRE_ARCHITECTURE) == Architecture.ARCH_X86) {
             JRE_ARCHITECTURE = "i386/i486/i586";
         }
         for (String arch : JRE_ARCHITECTURE.split("/")) {
@@ -89,7 +88,7 @@ public class ZalithUtils {
                 Tools.DIRNAME_HOME_JRE = "lib/" + arch;
             }
         }
-        String libName = is64BitsDevice() ? "lib64" : "lib";
+        String libName = Architecture.is64BitsDevice() ? "lib64" : "lib";
         StringBuilder ldLibraryPath = new StringBuilder();
         ldLibraryPath.append(jreHome)
                 .append("/").append(Tools.DIRNAME_HOME_JRE)
