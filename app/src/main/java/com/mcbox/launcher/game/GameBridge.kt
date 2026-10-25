@@ -44,7 +44,7 @@ object GameBridge {
         val runtimeManager = RuntimeManager(activity, paths.runtimes)
         val runtime = runtimeManager.findForMajor(javaMajor)
         if (runtime == null) {
-            activity.appendStatus("未找到 Java 运行时，请先在设置里安装")
+            activity.onGameExit(-3)
             return
         }
 

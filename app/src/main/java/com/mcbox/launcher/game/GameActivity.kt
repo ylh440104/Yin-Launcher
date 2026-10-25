@@ -103,9 +103,15 @@ class GameActivity : AppCompatActivity(), GameSurfaceView.Listener {
     }
     fun onGameExit(code: Int) {
         runOnUiThread {
-            LoadingOverlay.hide()
-            statusView.visibility = View.VISIBLE
-            statusView.text = "游戏已退出，代码 $code"
+            val logTail = try {
+                val logsDir = java.io.File(getExternalFilesDir(null), "mcbox/logs")
+                logsDir.listFiles()?.maxByOrNull { it.name }?.let { f ->
+                    f.readText().lines().takeLast(12).joinToString("\n")
+                }
+            } catch (t: Throwable) {
+                t.message
+            }
+            LoadingOverlay.showError("游戏已退出，代码 $code", logTail ?: "（无日志）")
         }
     }
     fun onGameReady() {

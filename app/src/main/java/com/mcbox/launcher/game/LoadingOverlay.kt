@@ -67,6 +67,32 @@ object LoadingOverlay {
         }
     }
 
+    fun showError(title: String, detail: String) {
+        val o = overlay ?: return
+        (o.context as? Activity)?.runOnUiThread {
+            spinner?.visibility = View.GONE
+            label?.text = title
+            label?.setTextColor(0xFFFF5252.toInt())
+            val tip = TextView(o.context).apply {
+                setTextColor(0xFFAAAAAA.toInt())
+                textSize = 10f
+                setPadding(0, 16, 0, 0)
+                text = detail.takeLast(1200)
+            }
+            val scroll = android.widget.ScrollView(o.context).apply {
+                addView(tip)
+            }
+            o.addView(
+                scroll,
+                LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    0,
+                    1f
+                )
+            )
+        }
+    }
+
     fun hide() {
         overlay?.let { o ->
             val fade = AlphaAnimation(1f, 0f).apply { duration = 300 }
