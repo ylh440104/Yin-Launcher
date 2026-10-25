@@ -63,51 +63,40 @@ class JavaLauncher(
         if (Tools.DIR_DATA == null || Tools.DIR_CACHE == null) {
             Tools.init(context, gameDir.parentFile?.absolutePath ?: gameDir.absolutePath)
         }
-        Tools.LOCAL_RENDERER = renderer
-        LauncherPreferences.loadPreferences(context)
-        LauncherPreferences.PREF_RAM_ALLOCATION = config.maxMemoryMb
 
         JREUtils.ensureLoaded()
         JREUtils.beginLog(logFile)
-        JREUtils.appendLog("launching via pojav chain: $jreHome\n")
-
-        val builder = ArgumentBuilder()
-
-        val extraJvmArgs = mutableListOf<String>()
-        extraJvmArgs.add("-Dorg.lwjgl.opengl.libname=$rendererLibrary")
-        extraJvmArgs.add("-Dorg.lwjgl.freetype.libname=$nativeLibDir/libfreetype.so")
-        extraJvmArgs.add("-Dorg.lwjgl.librarypath=$nativeLibDir")
-        extraJvmArgs.add("-Djava.library.path=$nativeLibDir:${config.nativesDir.absolutePath}")
-        extraJvmArgs.add("-Djna.boot.library.path=$nativeLibDir")
-        extraJvmArgs.add("-Djna.tmpdir=${cacheDir.absolutePath}")
-        extraJvmArgs.add("-Dfile.encoding=UTF-8")
-        extraJvmArgs.add("-Dminecraft.launcher.brand=yin")
-        extraJvmArgs.add("-Dminecraft.launcher.version=1.0.0")
-
-        config.versionJson.logging?.client?.let { logging ->
-            val logConfig = File(gameDir, "logging/${File(logging.file.path).name}")
-            if (logConfig.exists()) {
-                extraJvmArgs.add(logging.argument.replace("\${path}", logConfig.absolutePath))
-            }
-        }
-
-        extraJvmArgs.addAll(builder.buildJvmArgs(config).filter { arg ->
-            !arg.startsWith("-Xms") && !arg.startsWith("-Xmx") && !arg.startsWith("-cp") && arg != "-classpath"
-        })
-        extraJvmArgs.addAll(config.extraJvmArgs)
+        JREUtils.appendLog("launching via zalith chain: $jreHome\n")
 
         val mainClass = config.versionJson.mainClass.ifEmpty { "net.minecraft.client.main.Main" }
-        val allJvmArgs = mutableListOf<String>()
-        allJvmArgs.add("-cp")
-        allJvmArgs.add(config.classpath.joinToString(File.pathSeparator) { it.absolutePath })
-        allJvmArgs.addAll(extraJvmArgs)
-        allJvmArgs.add(mainClass)
-        allJvmArgs.addAll(builder.buildGameArgs(config))
-        allJvmArgs.addAll(config.extraGameArgs)
+        val builder = ArgumentBuilder()
+        val gameArgs = mutableListOf<String>()
+        gameArgs.add("-cp")
+        gameArgs.add(config.classpath.joinToString(File.pathSeparator) { it.absolutePath })
+        gameArgs.add(mainClass)
+        gameArgs.addAll(builder.buildGameArgs(config))
+        gameArgs.addAll(config.extraGameArgs)
 
-        JREUtils.launchJavaVM(activity, jreHome, gameDir, allJvmArgs, "")
-
-        JREUtils.appendLog("pojav chain exit: ${JREUtils.lastExitCode}")
+        net.kdt.pojavlaunch.utils.ZalithUtils.gameHome = gameDir.parentFile?.absolutePath ?: gameDir.absolutePath
+        net.kdt.pojavlaunch.utils.ZalithUtils.cacheDir = cacheDir
+        net.kdt.pojavlaunch.utils.ZalithUtils.dataDir = File(Tools.DIR_DATA ?: context.filesDir.parent ?: "/data/data/${context.packageName}")
+        net.kdt.pojavlaunch.utils.ZalithUtils.rendererId = renderer
+        net.kdt.pojavlaunch.utils.ZalithUtils.rendererLibrary = rendererLibrary
+        net.kdt.pojavlaunch.utils.ZalithUtils.ramAllocationMb = config.maxMemoryMb
+        net.kdt.pojavlaunch.utils.ZalithUtils.bigCoreAffinity = bigCoreAffinity
+        net.kdt.pojavlaunch.utils.ZalithUtils.forceVsync = forceVsync
+        net.kdt.pojavlaunch.utils.ZalithUtils.zink = zink
+        net.kdt.pojavlaunch.utils.ZalithUtils.resolutionRatio = 1.0f
+        net.kdt.pojavlaunch.utils.ZalithUtils.versionName = config.versionId
+        net.kdt.pojavlaunch.utils.ZalithUtils.launchWithUtils(
+            context,
+            "arm64-v8a",
+            jreHome,
+            gameDir.absolutePath,
+            gameArgs,
+            "",
+            null
+        )
         return JREUtils.lastExitCode
     }
 
