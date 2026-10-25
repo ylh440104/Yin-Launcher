@@ -62,6 +62,7 @@ public class ZalithUtils {
             gameDir = gameDirectory;
             JREUtils.redirectAndPrintJRELog();
 
+            try { JREUtils.chdir(gameDirectory); } catch (Throwable ignored) {}
             relocateLibPath(jreArch, jreHome);
             initLdLibraryPath(jreHome);
             setEnv(jreHome);
