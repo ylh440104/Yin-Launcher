@@ -119,9 +119,6 @@ object GameBridge {
 
                 activity.appendStatus("启动 JVM (Java ${runtime.javaMajor})")
                 exited.set(false)
-                android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
-                    if (!exited.get()) activity.onGameReady()
-                }, 15000)
                 val logFile = File(paths.logs, "game-${System.currentTimeMillis()}.log")
                 val exit = launcher.launch(
                     activity = activity,

@@ -60,6 +60,7 @@ public class ZalithUtils {
         try {
             DIR_NATIVE_LIB = Tools.NATIVE_LIB_DIR;
             gameDir = gameDirectory;
+            JREUtils.redirectAndPrintJRELog();
 
             relocateLibPath(jreArch, jreHome);
             initLdLibraryPath(jreHome);
