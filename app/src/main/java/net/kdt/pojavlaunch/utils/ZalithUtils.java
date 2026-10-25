@@ -238,8 +238,11 @@ public class ZalithUtils {
         purgeArg(userArgs, "-Dorg.lwjgl.opengl.libname");
         purgeArg(userArgs, "-Dorg.lwjgl.freetype.libname");
         purgeArg(userArgs, "-XX:ActiveProcessorCount");
-        userArgs.add("-Xms" + ramAllocationMb + "M");
+        userArgs.add("-Xms512M");
         userArgs.add("-Xmx" + ramAllocationMb + "M");
+        userArgs.add("-Xss512k");
+        userArgs.add("-XX:+UseSerialGC");
+        userArgs.add("-XX:TieredStopAtLevel=1");
         userArgs.add("-Dorg.lwjgl.opengl.libname=" + loadGraphicsLibrary());
         userArgs.add("-Dorg.lwjgl.freetype.libname=" + DIR_NATIVE_LIB + "/libfreetype.so");
         userArgs.add("-XX:ActiveProcessorCount=" + java.lang.Runtime.getRuntime().availableProcessors());
