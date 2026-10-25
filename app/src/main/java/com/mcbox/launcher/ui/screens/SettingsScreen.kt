@@ -375,7 +375,9 @@ fun SettingsScreen() {
                                 try {
                                     val jre = Class.forName("net.kdt.pojavlaunch.utils.JREUtils")
                                     jre.getMethod("ensureLoaded").invoke(null)
-                                    val rm = com.mcbox.launcher.runtime.RuntimeManager(context, java.io.File(context.filesDir, "mcbox/runtimes"))
+                                    val st = com.mcbox.launcher.data.SettingsStore(context)
+                                    val st2 = st.paths()
+                                    val rm = com.mcbox.launcher.runtime.RuntimeManager(context, st2.runtimes)
                                     val rt = rm.findForMajor(21) ?: rm.findForMajor(17)
                                         ?: return@withContext "未找到 JRE，请先安装"
                                     val zc = Class.forName("net.kdt.pojavlaunch.utils.ZalithUtils")
@@ -384,20 +386,20 @@ fun SettingsScreen() {
                                         f.isAccessible = true
                                         f.set(null, value)
                                     }
-                                    setF("gameHome", context.filesDir.absolutePath + "/mcbox")
+                                    setF("gameHome", st2.root.absolutePath)
                                     setF("cacheDir", context.cacheDir)
                                     setF("dataDir", java.io.File(context.filesDir.parent))
                                     val m = zc.getMethod("launchWithUtils", android.content.Context::class.java, String::class.java, String::class.java, String::class.java, List::class.java, String::class.java, Runnable::class.java)
                                     val th = Thread {
                                         try {
-                                            m.invoke(null, context, "arm64-v8a", rt.home.absolutePath, context.filesDir.absolutePath + "/mcbox", listOf("-version"), "", null)
+                                            m.invoke(null, context, "arm64-v8a", rt.home.absolutePath, st2.root.absolutePath, listOf("-version"), "", null)
                                         } catch (t: Throwable) {
                                             android.util.Log.w("JvmTest", "probe failed", t)
                                         }
                                     }
                                     th.name = "jvm-probe"
                                     th.start()
-                                    "JVM -version 测试已启动，10 秒后看 files/mcbox/jvm-console.txt"
+                                    "JVM -version 测试已启动，10 秒后看游戏目录下 jvm-console.txt"
                                 } catch (t: Throwable) {
                                     "测试失败: " + t.stackTraceToString()
                                 }
