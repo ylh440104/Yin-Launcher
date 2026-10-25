@@ -60,6 +60,13 @@ class JavaLauncher(
     ): Int {
         val jreHome = runtime.home.absolutePath
 
+        if (Tools.DIR_DATA == null || Tools.DIR_CACHE == null) {
+            Tools.init(context, gameDir.parentFile?.absolutePath ?: gameDir.absolutePath)
+        }
+        Tools.LOCAL_RENDERER = renderer
+        LauncherPreferences.loadPreferences(context)
+        LauncherPreferences.PREF_RAM_ALLOCATION = config.maxMemoryMb
+
         JREUtils.ensureLoaded()
         JREUtils.beginLog(logFile)
         JREUtils.appendLog("launching via pojav chain: $jreHome\n")
