@@ -353,7 +353,7 @@ public class ZalithUtils {
 
     private static void redirectStdio() {
         try {
-            File dir = new File(gameHome == null ? "/data/data/com.mcbox.launcher" : gameHome);
+            File dir = cacheDir != null ? cacheDir : new File("/data/data/com.mcbox.launcher/cache");
             File out = new File(dir, "jvm-console.txt");
             java.io.FileOutputStream fos = new java.io.FileOutputStream(out, false);
             java.io.FileDescriptor fd = fos.getFD();

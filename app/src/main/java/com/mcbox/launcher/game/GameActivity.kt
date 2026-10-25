@@ -103,6 +103,10 @@ class GameActivity : AppCompatActivity(), GameSurfaceView.Listener {
     }
     fun onGameExit(code: Int) {
         runOnUiThread {
+            val consoleText = try {
+                val console = java.io.File(cacheDir, "jvm-console.txt")
+                if (console.exists()) "\n=== JVM CONSOLE ====\n" + console.readText().takeLast(1500) else ""
+            } catch (t: Throwable) { "" }
             val logTail = try {
                 val logsDir = java.io.File(getExternalFilesDir(null), "mcbox/logs")
                 logsDir.listFiles()?.maxByOrNull { it.name }?.let { f ->
@@ -111,7 +115,7 @@ class GameActivity : AppCompatActivity(), GameSurfaceView.Listener {
             } catch (t: Throwable) {
                 t.message
             }
-            LoadingOverlay.showError("游戏已退出，代码 $code", logTail ?: "（无日志）")
+            LoadingOverlay.showError("游戏已退出，代码 $code", (logTail ?: "") + consoleText)
         }
     }
     fun onGameReady() {
