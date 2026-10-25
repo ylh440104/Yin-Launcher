@@ -367,6 +367,33 @@ fun SettingsScreen() {
                             }
                         }
                     }) { Text("运行自检") }
+                    var jvmReport by remember { mutableStateOf("") }
+                    OutlinedButton(onClick = {
+                        scope.launch {
+                            jvmReport = "JVM 启动测试中..."
+                            jvmReport = withContext(Dispatchers.IO) {
+                                try {
+                                    net.kdt.pojavlaunch.utils.JREUtils.ensureLoaded()
+                                    val rm = com.mcbox.launcher.runtime.RuntimeManager(context, java.io.File(context.filesDir, "mcbox/runtimes"))
+                                    val rt = rm.findForMajor(21) ?: rm.findForMajor(17)
+                                        ?: return@withContext "未找到 JRE，请先安装"
+                                    net.kdt.pojavlaunch.utils.ZalithUtils.gameHome = context.filesDir.absolutePath + "/mcbox"
+                                    net.kdt.pojavlaunch.utils.ZalithUtils.cacheDir = context.cacheDir
+                                    net.kdt.pojavlaunch.utils.ZalithUtils.dataDir = java.io.File(context.filesDir.parent)
+                                    val zc = Class.forName("net.kdt.pojavlaunch.utils.ZalithUtils")
+                                    val m = zc.getMethod("launchWithUtils", android.content.Context::class.java, String::class.java, String::class.java, String::class.java, List::class.java, String::class.java, Runnable::class.java)
+                                    val th = Thread {
+                                        try { m.invoke(null, context, "arm64-v8a", rt.home.absolutePath, context.filesDir.absolutePath + "/mcbox", listOf("-version"), "", null) } catch (t: Throwable) { android.util.Log.w("JvmTest", "probe failed", t) }
+n                                    }
+                                    th.name = "jvm-probe"
+                                    th.start()
+                                    "JVM -version 测试已启动，10 秒后看 files/mcbox/jvm-console.txt"
+                                } catch (t: Throwable) {
+                                    "测试失败: " + t.stackTraceToString()
+                                }
+                            }
+                        }
+                    }) { Text("JVM 测试") }
                 }
                 if (nativeReport.isNotEmpty()) {
                     Spacer(Modifier.height(8.dp))
