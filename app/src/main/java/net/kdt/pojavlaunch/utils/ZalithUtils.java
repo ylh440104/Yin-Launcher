@@ -121,8 +121,7 @@ public class ZalithUtils {
         JREUtils.dlopen(JREUtils.findInLdLibPath("libjava.so"));
         JREUtils.dlopen(JREUtils.findInLdLibPath("libnet.so"));
         JREUtils.dlopen(JREUtils.findInLdLibPath("libnio.so"));
-        JREUtils.dlopen(JREUtils.findInLdLibPath("libawt.so"));
-        JREUtils.dlopen(JREUtils.findInLdLibPath("libawt_headless.so"));
+
         JREUtils.dlopen(JREUtils.findInLdLibPath("libfreetype.so"));
         JREUtils.dlopen(JREUtils.findInLdLibPath("libfontmanager.so"));
         for (File f : JREUtils.locateLibs(new File(jreHome, Tools.DIRNAME_HOME_JRE))) {
