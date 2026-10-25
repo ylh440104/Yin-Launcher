@@ -403,12 +403,13 @@ public class ZalithUtils {
         is.close();
         return bos.toString("UTF-8");
     }
-    public static void copyAssetFile(android.content.Context ctx, String src, String dst, boolean overwrite) throws java.io.IOException {
-        File out = new File(dst);
-        if (!out.getParentFile().exists()) out.getParentFile().mkdirs();
-        if (out.exists() && !overwrite) return;
+    public static void copyAssetFile(android.content.Context ctx, String src, String outputDir, boolean overwrite) throws java.io.IOException {
+        File parentFolder = new File(outputDir);
+        if (!parentFolder.exists()) parentFolder.mkdirs();
+        File destinationFile = new File(parentFolder, new File(src).getName());
+        if (destinationFile.exists() && !overwrite) return;
         java.io.InputStream is = ctx.getAssets().open(src);
-        java.io.FileOutputStream fos = new java.io.FileOutputStream(out);
+        java.io.FileOutputStream fos = new java.io.FileOutputStream(destinationFile);
         byte[] buf = new byte[65536];
         int len;
         while ((len = is.read(buf)) > 0) fos.write(buf, 0, len);
