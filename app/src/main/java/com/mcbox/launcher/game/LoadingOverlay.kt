@@ -18,7 +18,9 @@ object LoadingOverlay {
     private var label: TextView? = null
 
     fun attach(activity: Activity, root: FrameLayout) {
-        if (overlay != null) return
+        overlay = null
+        spinner = null
+        label = null
         val ctx = activity
         val box = LinearLayout(ctx).apply {
             orientation = LinearLayout.VERTICAL

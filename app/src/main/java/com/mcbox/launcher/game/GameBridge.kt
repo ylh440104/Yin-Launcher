@@ -23,6 +23,7 @@ object GameBridge {
 
     @Volatile
     private var thread: Thread? = null
+    private val exited = java.util.concurrent.atomic.AtomicBoolean(false)
 
     fun start(activity: GameActivity, intent: Intent, holder: android.view.SurfaceHolder?, widthPx: Int, heightPx: Int) {
         val instanceId = intent.getStringExtra(GameActivity.EXTRA_INSTANCE) ?: return
@@ -60,6 +61,7 @@ object GameBridge {
                 activity.appendStatus(check.message)
                 if (!check.allOk) {
                     activity.appendStatus("原生库不可用，已停止启动，避免崩溃")
+                    exited.set(true)
                     activity.onGameExit(-1)
                     return@Thread
                 }
@@ -116,8 +118,9 @@ object GameBridge {
                 launcher.bigCoreAffinity = settings.bigCore
 
                 activity.appendStatus("启动 JVM (Java ${runtime.javaMajor})")
+                exited.set(false)
                 android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
-                    activity.onGameReady()
+                    if (!exited.get()) activity.onGameReady()
                 }, 15000)
                 val logFile = File(paths.logs, "game-${System.currentTimeMillis()}.log")
                 val exit = launcher.launch(
@@ -129,9 +132,11 @@ object GameBridge {
                     cacheDir = paths.temp,
                     logFile = logFile
                 )
+                exited.set(true)
                 activity.onGameExit(exit)
             } catch (t: Throwable) {
                 JREUtils.appendLog("launch failed: ${t.stackTraceToString()}")
+                exited.set(true)
                 activity.onGameExit(-2)
                 activity.appendStatus("启动失败: ${t.message}")
             }
