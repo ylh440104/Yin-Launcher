@@ -348,10 +348,10 @@ public class ZalithUtils {
         try {
             File dir = new File(gameHome == null ? "/data/data/com.mcbox.launcher" : gameHome);
             File out = new File(dir, "jvm-console.txt");
-            int fd = android.system.Os.open(out.getAbsolutePath(), android.system.OsConstants.O_WRONLY | android.system.OsConstants.O_CREAT | android.system.OsConstants.O_TRUNC, 0600);
+            java.io.FileOutputStream fos = new java.io.FileOutputStream(out, false);
+            java.io.FileDescriptor fd = fos.getFD();
             android.system.Os.dup2(fd, 1);
             android.system.Os.dup2(fd, 2);
-            android.system.Os.close(fd);
         } catch (Throwable t) {
             Log.w(TAG, "stdio redirect failed", t);
         }
