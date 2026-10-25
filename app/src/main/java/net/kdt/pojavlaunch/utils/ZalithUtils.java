@@ -60,6 +60,9 @@ public class ZalithUtils {
         try {
             DIR_NATIVE_LIB = Tools.NATIVE_LIB_DIR;
             gameDir = gameDirectory;
+            unpackComponent(activity, "caciocavallo17", false);
+            unpackComponent(activity, "lwjgl3", false);
+            unpackComponent(activity, "security", true);
             JREUtils.redirectAndPrintJRELog();
 
             try { JREUtils.chdir(gameDirectory); } catch (Throwable ignored) {}
@@ -238,6 +241,7 @@ public class ZalithUtils {
         purgeArg(userArgs, "-Dorg.lwjgl.opengl.libname");
         purgeArg(userArgs, "-Dorg.lwjgl.freetype.libname");
         purgeArg(userArgs, "-XX:ActiveProcessorCount");
+        getCacioJavaArgs(userArgs, false);
         userArgs.add("-Xms512M");
         userArgs.add("-Xmx" + ramAllocationMb + "M");
         userArgs.add("-Xss512k");
@@ -365,5 +369,93 @@ public class ZalithUtils {
             String arg = args.next();
             if (arg.startsWith(argStart)) args.remove();
         }
+    }
+
+    public static void unpackComponent(android.content.Context ctx, String component, boolean privateDirectory) throws java.io.IOException {
+        android.content.res.AssetManager am = ctx.getAssets();
+        String rootDir = privateDirectory ? Tools.DIR_DATA : gameHome;
+        File versionFile = new File(rootDir + "/" + component + "/version");
+        File versionParent = versionFile.getParentFile();
+        if (versionParent == null) return;
+        if (!versionParent.exists()) versionParent.mkdirs();
+        java.io.InputStream is = am.open("components/" + component + "/version");
+        String release1 = readAll(is);
+        String release2 = versionFile.exists() ? readAll(new java.io.FileInputStream(versionFile)) : "";
+        if (!release1.equals(release2)) {
+            if (versionParent.exists() && versionParent.isDirectory()) {
+                for (File f : versionParent.listFiles()) {
+                    if (!f.getName().equals("version")) f.delete();
+                }
+            }
+            String[] fileList = am.list("components/" + component);
+            if (fileList != null) {
+                for (String fileName : fileList) {
+                    copyAssetFile(ctx, "components/" + component + "/" + fileName, rootDir + "/" + component, true);
+                }
+            }
+        }
+    }
+    private static String readAll(java.io.InputStream is) throws java.io.IOException {
+        java.io.ByteArrayOutputStream bos = new java.io.ByteArrayOutputStream();
+        byte[] buf = new byte[4096];
+        int len;
+        while ((len = is.read(buf)) > 0) bos.write(buf, 0, len);
+        is.close();
+        return bos.toString("UTF-8");
+    }
+    public static void copyAssetFile(android.content.Context ctx, String src, String dst, boolean overwrite) throws java.io.IOException {
+        File out = new File(dst);
+        if (!out.getParentFile().exists()) out.getParentFile().mkdirs();
+        if (out.exists() && !overwrite) return;
+        java.io.InputStream is = ctx.getAssets().open(src);
+        java.io.FileOutputStream fos = new java.io.FileOutputStream(out);
+        byte[] buf = new byte[65536];
+        int len;
+        while ((len = is.read(buf)) > 0) fos.write(buf, 0, len);
+        fos.close();
+        is.close();
+    }
+    public static void getCacioJavaArgs(List<String> javaArgList, boolean isJava8) {
+        javaArgList.add("-Djava.awt.headless=false");
+        javaArgList.add("-Dcacio.managed.screensize=720x600");
+        javaArgList.add("-Dcacio.font.fontmanager=sun.awt.X11FontManager");
+        javaArgList.add("-Dcacio.font.fontscaler=sun.font.FreetypeFontScaler");
+        javaArgList.add("-Dswing.defaultlaf=javax.swing.plaf.metal.MetalLookAndFeel");
+        if (isJava8) {
+            javaArgList.add("-Dawt.toolkit=net.java.openjdk.cacio.ctc.CTCToolkit");
+            javaArgList.add("-Djava.awt.graphicsenv=net.java.openjdk.cacio.ctc.CTCGraphicsEnvironment");
+        } else {
+            javaArgList.add("-Dawt.toolkit=com.github.caciocavallosilano.cacio.ctc.CTCToolkit");
+            javaArgList.add("-Djava.awt.graphicsenv=com.github.caciocavallosilano.cacio.ctc.CTCGraphicsEnvironment");
+            javaArgList.add("-Djava.system.class.loader=com.github.caciocavallosilano.cacio.ctc.CTCPreloadClassLoader");
+            javaArgList.add("--add-exports=java.desktop/java.awt=ALL-UNNAMED");
+            javaArgList.add("--add-exports=java.desktop/java.awt.peer=ALL-UNNAMED");
+            javaArgList.add("--add-exports=java.desktop/sun.awt.image=ALL-UNNAMED");
+            javaArgList.add("--add-exports=java.desktop/sun.java2d=ALL-UNNAMED");
+            javaArgList.add("--add-exports=java.desktop/java.awt.dnd.peer=ALL-UNNAMED");
+            javaArgList.add("--add-exports=java.desktop/sun.awt=ALL-UNNAMED");
+            javaArgList.add("--add-exports=java.desktop/sun.awt.event=ALL-UNNAMED");
+            javaArgList.add("--add-exports=java.desktop/sun.awt.datatransfer=ALL-UNNAMED");
+            javaArgList.add("--add-exports=java.desktop/sun.font=ALL-UNNAMED");
+            javaArgList.add("--add-exports=java.base/sun.security.action=ALL-UNNAMED");
+            javaArgList.add("--add-opens=java.base/java.util=ALL-UNNAMED");
+            javaArgList.add("--add-opens=java.desktop/java.awt=ALL-UNNAMED");
+            javaArgList.add("--add-opens=java.desktop/sun.font=ALL-UNNAMED");
+            javaArgList.add("--add-opens=java.desktop/sun.java2d=ALL-UNNAMED");
+            javaArgList.add("--add-opens=java.base/java.lang.reflect=ALL-UNNAMED");
+            javaArgList.add("--add-opens=java.base/java.net=ALL-UNNAMED");
+        }
+        StringBuilder cacioClasspath = new StringBuilder();
+        cacioClasspath.append("-Xbootclasspath/").append(isJava8 ? "p" : "a");
+        File cacioDir = new File(gameHome + "/caciocavallo" + (isJava8 ? "" : "17"));
+        File[] cacioFiles = cacioDir.listFiles();
+        if (cacioFiles != null) {
+            for (File file : cacioFiles) {
+                if (file.getName().endsWith(".jar")) {
+                    cacioClasspath.append(":").append(file.getAbsolutePath());
+                }
+            }
+        }
+        javaArgList.add(cacioClasspath.toString());
     }
 }
