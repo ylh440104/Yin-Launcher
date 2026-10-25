@@ -255,6 +255,7 @@ public class ZalithUtils {
         try { JREUtils.initializeHooks(); } catch (Throwable ignored) {}
         JREUtils.chdir(gameDirectory);
         userArgs.add(0, "java");
+        redirectStdio();
         final int exitCode = VMLauncher.launchJVM(userArgs.toArray(new String[0]));
         Logger.appendToLog("Java Exit code: " + exitCode + "\n");
         JREUtils.lastExitCode = exitCode;
@@ -342,6 +343,19 @@ public class ZalithUtils {
         return parsedArguments;
     }
 
+
+    private static void redirectStdio() {
+        try {
+            File dir = new File(gameHome == null ? "/data/data/com.mcbox.launcher" : gameHome);
+            File out = new File(dir, "jvm-console.txt");
+            int fd = android.system.Os.open(out.getAbsolutePath(), android.system.OsConstants.O_WRONLY | android.system.OsConstants.O_CREAT | android.system.OsConstants.O_TRUNC, 0600);
+            android.system.Os.dup2(fd, 1);
+            android.system.Os.dup2(fd, 2);
+            android.system.Os.close(fd);
+        } catch (Throwable t) {
+            Log.w(TAG, "stdio redirect failed", t);
+        }
+    }
     private static void purgeArg(List<String> argList, String argStart) {
         Iterator<String> args = argList.iterator();
         while (args.hasNext()) {

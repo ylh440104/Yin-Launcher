@@ -72,7 +72,9 @@ class JavaLauncher(
         val builder = ArgumentBuilder()
         val gameArgs = mutableListOf<String>()
         gameArgs.add("-cp")
-        gameArgs.add(config.classpath.joinToString(File.pathSeparator) { it.absolutePath })
+        gameArgs.add(config.classpath
+            .filter { !it.name.contains("natives") }
+            .joinToString(File.pathSeparator) { it.absolutePath })
         gameArgs.add(mainClass)
         gameArgs.addAll(builder.buildGameArgs(config))
         gameArgs.addAll(config.extraGameArgs)
