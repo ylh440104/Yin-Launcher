@@ -77,26 +77,34 @@ class JavaLauncher(
         gameArgs.addAll(builder.buildGameArgs(config))
         gameArgs.addAll(config.extraGameArgs)
 
-        net.kdt.pojavlaunch.utils.ZalithUtils.gameHome = gameDir.parentFile?.absolutePath ?: gameDir.absolutePath
-        net.kdt.pojavlaunch.utils.ZalithUtils.cacheDir = cacheDir
-        net.kdt.pojavlaunch.utils.ZalithUtils.dataDir = File(Tools.DIR_DATA ?: context.filesDir.parent ?: "/data/data/${context.packageName}")
-        net.kdt.pojavlaunch.utils.ZalithUtils.rendererId = renderer
-        net.kdt.pojavlaunch.utils.ZalithUtils.rendererLibrary = rendererLibrary
-        net.kdt.pojavlaunch.utils.ZalithUtils.ramAllocationMb = config.maxMemoryMb
-        net.kdt.pojavlaunch.utils.ZalithUtils.bigCoreAffinity = bigCoreAffinity
-        net.kdt.pojavlaunch.utils.ZalithUtils.forceVsync = forceVsync
-        net.kdt.pojavlaunch.utils.ZalithUtils.zink = zink
-        net.kdt.pojavlaunch.utils.ZalithUtils.resolutionRatio = 1.0f
-        net.kdt.pojavlaunch.utils.ZalithUtils.versionName = config.versionId
-        net.kdt.pojavlaunch.utils.ZalithUtils.launchWithUtils(
-            context,
-            "arm64-v8a",
-            jreHome,
-            gameDir.absolutePath,
-            gameArgs,
-            "",
-            null
+        val zc = Class.forName("net.kdt.pojavlaunch.utils.ZalithUtils")
+        fun setF(name: String, value: Any?) {
+            val f = zc.getDeclaredField(name)
+            f.isAccessible = true
+            f.set(null, value)
+        }
+        setF("gameHome", gameDir.parentFile?.absolutePath ?: gameDir.absolutePath)
+        setF("cacheDir", cacheDir)
+        setF("dataDir", File(Tools.DIR_DATA ?: context.filesDir.parent ?: "/data/data/${context.packageName}"))
+        setF("rendererId", renderer)
+        setF("rendererLibrary", rendererLibrary)
+        setF("ramAllocationMb", config.maxMemoryMb)
+        setF("bigCoreAffinity", bigCoreAffinity)
+        setF("forceVsync", forceVsync)
+        setF("zink", zink)
+        setF("resolutionRatio", 1.0f)
+        setF("versionName", config.versionId)
+        val m = zc.getMethod(
+            "launchWithUtils",
+            android.content.Context::class.java,
+            String::class.java,
+            String::class.java,
+            String::class.java,
+            List::class.java,
+            String::class.java,
+            Runnable::class.java
         )
+        m.invoke(null, context, "arm64-v8a", jreHome, gameDir.absolutePath, gameArgs, "", null)
         return JREUtils.lastExitCode
     }
 
