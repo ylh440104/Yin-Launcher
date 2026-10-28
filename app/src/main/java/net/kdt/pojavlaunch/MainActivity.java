@@ -5,7 +5,7 @@ import android.content.ClipboardManager;
 import android.content.Context;
 import android.util.Log;
 
-public class MainActivity {
+public class MainActivity extends android.app.Activity {
     private static ClipboardManager GLOBAL_CLIPBOARD;
     private static Context appContext;
 
