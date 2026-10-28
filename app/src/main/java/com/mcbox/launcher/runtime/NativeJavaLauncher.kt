@@ -38,7 +38,14 @@ object NativeJavaLauncher {
         val javaBin = File(jreHome, "bin/java")
         require(javaBin.exists()) { "java 二进制不存在: ${javaBin.absolutePath}" }
 
-        val libDir = File(jreHome, "lib")
+        // Android 10+ 对 app 私有数据目录（app_data_file）禁止 exec，
+        // 直接 ProcessBuilder 会得到 EACCES(error=13)。
+        // 这里探测一次：不可执行时把整个 JRE 迁移到 app 的 codeCacheDir
+        // （其 SELinux 标签允许执行），并以迁移后的路径启动。
+        val execHome = ensureExecutableJre(context, jreHome, onLog)
+        val execJava = File(execHome, "bin/java")
+
+        val libDir = File(execHome, "lib")
         val serverDir = File(libDir, "server")
         val jliDir = File(libDir, "jli")
 
@@ -54,7 +61,7 @@ object NativeJavaLauncher {
         ).filter { File(it).exists() }.joinToString(":")
 
         val args = mutableListOf<String>()
-        args += javaBin.absolutePath
+        args += execJava.absolutePath
         args += "-Xmx${memoryMb}M"
         args += "-Xms512M"
         args += "-Djava.library.path=$libPath"
@@ -101,7 +108,7 @@ object NativeJavaLauncher {
             ?.filterNot { it.contains("\${") }
             ?.forEach { args += it }
 
-        onLog("[launcher] java = ${javaBin.absolutePath}")
+        onLog("[launcher] java = ${execJava.absolutePath}")
         onLog("[launcher] main = ${version.mainClass}")
         onLog("[launcher] LD_LIBRARY_PATH = $libPath")
 
@@ -126,6 +133,71 @@ object NativeJavaLauncher {
         }
         val exit = process.waitFor()
         return Result(exit, sb.toString())
+    }
+
+    /**
+     * 返回一个「java 二进制可以被本 app 进程执行」的 JRE 根目录。
+     *
+     * 背景：Android 10+ 给 app 私有数据目录打了 app_data_file 标签，
+     * SELinux 禁止从该标签执行文件，ProcessBuilder 会抛 EACCES(error=13)。
+     * 而 codeCacheDir 的标签允许执行。所以先探测原目录，
+     * 不可执行时把 JRE 复制到 codeCacheDir 下再返回。
+     */
+    private fun ensureExecutableJre(
+        context: Context,
+        jreHome: File,
+        onLog: (String) -> Unit
+    ): File {
+        if (canExecuteDirectly(jreHome, onLog)) return jreHome
+
+        val target = File(context.codeCacheDir, "jre-exec")
+        val stamp = File(target, ".stamp")
+        val want = "${jreHome.absolutePath}:${jreHome.lastModified()}"
+        if (stamp.exists() && stamp.readText().trim() == want && File(target, "bin/java").exists()) {
+            onLog("[launcher] reuse executable JRE at ${target.absolutePath}")
+            return target
+        }
+
+        onLog("[launcher] app 数据目录不可执行，复制 JRE 到 ${target.absolutePath}")
+        target.deleteRecursively()
+        target.mkdirs()
+        jreHome.copyRecursively(target, overwrite = true)
+        // 恢复可执行位（copyRecursively 可能不保留）
+        listOf("bin", "lib", "lib/server", "lib/jli").forEach { sub ->
+            File(target, sub).listFiles()?.forEach { f ->
+                if (f.isFile) f.setExecutable(true, false)
+            }
+        }
+        stamp.writeText(want)
+        onLog("[launcher] JRE 复制完成")
+        return target
+    }
+
+    /** 用一次轻量的 exec 探测当前进程是否真的能执行 java。 */
+    private fun canExecuteDirectly(jreHome: File, onLog: (String) -> Unit): Boolean {
+        val java = File(jreHome, "bin/java")
+        if (!java.exists()) return false
+        if (!java.canExecute()) {
+            onLog("[launcher] java 缺少执行位，尝试补上")
+            java.setExecutable(true, false)
+        }
+        return try {
+            val p = ProcessBuilder(java.absolutePath, "-version")
+                .redirectErrorStream(true)
+                .apply {
+                    environment()["LD_LIBRARY_PATH"] =
+                        listOf(File(jreHome, "lib"), File(jreHome, "lib/server"))
+                            .joinToString(":") { it.absolutePath }
+                }
+                .start()
+            p.inputStream.bufferedReader().readText()
+            val code = p.waitFor()
+            onLog("[launcher] exec probe exit=$code")
+            code == 0
+        } catch (t: Throwable) {
+            onLog("[launcher] exec probe failed: ${t.message}")
+            false
+        }
     }
 
     /** 收集 classpath：libraries 目录中实际存在的 jar + 版本 jar。 */
