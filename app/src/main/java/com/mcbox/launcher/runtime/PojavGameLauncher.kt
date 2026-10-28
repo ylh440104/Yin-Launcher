@@ -88,15 +88,25 @@ object PojavGameLauncher {
         val launchClassPath = Tools.generateLaunchClassPath(versionInfo, versionId)
         val javaArgList = mutableListOf<String>()
         Tools.getCacioJavaArgs(javaArgList, runtime.javaVersion == 8)
-        if (versionInfo.logging != null) {
-            val configFile = Tools.DIR_DATA + "/security/" + versionInfo.logging.client.file.id.replace("client", "log4j-rce-patch")
-            val finalConfig = if (!File(configFile).exists()) {
-                Tools.DIR_GAME_NEW + "/" + versionInfo.logging.client.file.id
-            } else configFile
-            javaArgList.add("-Dlog4j.configurationFile=$finalConfig")
+        // logging.client.file 在新版 version.json 中可能缺少 id 字段，
+        // 且 Tools.DIR_DATA 在未初始化时为 null，这里必须逐级判空。
+        val loggingClient = versionInfo.logging?.client
+        val loggingFile = loggingClient?.file
+        val loggingId = loggingFile?.id
+        if (loggingClient != null && loggingId != null) {
+            val dataDir = Tools.DIR_DATA
+            val patchedName = loggingId.replace("client", "log4j-rce-patch")
+            val candidates = buildList {
+                if (dataDir != null) add(File(dataDir, "security/$patchedName").absolutePath)
+                add(File(Tools.DIR_GAME_NEW, loggingId).absolutePath)
+            }
+            candidates.firstOrNull { File(it).exists() }?.let { path ->
+                javaArgList.add("-Dlog4j.configurationFile=$path")
+            }
         }
-        val nativesDir = File(Tools.DIR_CACHE, "natives/$versionId")
-        if (nativesDir.exists()) {
+        val cacheDir: File? = Tools.DIR_CACHE
+        val nativesDir = cacheDir?.let { File(it, "natives/$versionId") }
+        if (nativesDir != null && nativesDir.exists()) {
             javaArgList.add("-Djava.library.path=${nativesDir.absolutePath}:${Tools.NATIVE_LIB_DIR}")
             javaArgList.add("-Djna.boot.library.path=${nativesDir.absolutePath}")
         }
