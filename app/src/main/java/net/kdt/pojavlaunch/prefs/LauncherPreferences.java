@@ -165,7 +165,7 @@ public class LauncherPreferences {
 
         float ratio = (100f * targetSide / minSide);
         // The value must match the seekbar values
-        int increment = context.getResources().1;
+        int increment = 1;
         return (int) (Math.ceil(ratio / increment) * increment);
     }
 
