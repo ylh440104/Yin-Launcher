@@ -117,6 +117,16 @@ object PojavGameLauncher {
         javaArgList.addAll(launchArgs)
 
         activity?.let { FFmpegPlugin.discover(it) }
+        // JREUtils.getJavaArgs 使用 Tools.currentDisplayMetrics 计算 glfwstub 窗口尺寸，
+        // 该字段为 null 会在拼接 JVM 参数时 NPE（Pojav 平时由 MinecraftGLSurface 负责初始化）。
+        if (Tools.currentDisplayMetrics == null) {
+            val dm = android.util.DisplayMetrics()
+            val wm = ctx.getSystemService(android.content.Context.WINDOW_SERVICE)
+                as android.view.WindowManager
+            @Suppress("DEPRECATION")
+            wm.defaultDisplay.getRealMetrics(dm)
+            Tools.currentDisplayMetrics = dm
+        }
         JREUtils.launchJavaVM(activity, runtime, gamedir, javaArgList, "")
         return JREUtils.lastExitCode
     }
