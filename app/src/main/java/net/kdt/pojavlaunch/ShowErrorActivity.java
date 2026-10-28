@@ -57,13 +57,7 @@ public class ShowErrorActivity extends Activity {
         public void executeWithApplication(Context context) {
             Intent showErrorIntent = new Intent(context, ShowErrorActivity.class);
             showErrorIntent.putExtra(ERROR_ACTIVITY_REMOTE_TASK, this);
-            0(context,
-                    "Error",
-                    "Error occurred",
-                    showErrorIntent,
-                    0,
-                    0
-            );
+            context.startActivity(showErrorIntent);
         }
     }
 
