@@ -49,6 +49,11 @@ object NativeJavaLauncher {
         val serverDir = File(libDir, "server")
         val jliDir = File(libDir, "jli")
 
+        // JRE 的 bin/java 与 libjli.so 都依赖 libz.so，但 Android 版 JRE 不含它
+        // （原版由 linker namespace 从 /system/lib64 解析；走 dlopen 时解析不到）。
+        // 这里把系统库补进 JRE 的 lib 目录，让同一 namespace 内可以解析。
+        ensureRuntimeLibs(libDir, onLog)
+
         val classpath = buildClasspath(paths, version, versionId)
         onLog("[launcher] classpath entries = ${classpath.size}")
 
@@ -204,4 +209,25 @@ object NativeJavaLauncher {
 
         return result.toList()
     }
+    /** 补齐 JRE 目录内缺失的系统依赖库（Android 版 JRE 不带 libz）。 */
+    private fun ensureRuntimeLibs(libDir: File, onLog: (String) -> Unit) {
+        val needed = listOf("libz.so")
+        val systemDirs = listOf("/system/lib64", "/apex/com.android.runtime/lib64/bionic")
+        for (name in needed) {
+            val target = File(libDir, name)
+            if (target.exists() && target.length() > 0) continue
+            val src = systemDirs.map { File(it, name) }.firstOrNull { it.exists() }
+            if (src == null) {
+                onLog("[launcher] 警告: 系统缺少 $name，无法补齐")
+                continue
+            }
+            try {
+                src.copyTo(target, overwrite = true)
+                onLog("[launcher] 已从 ${src.absolutePath} 补齐 $name")
+            } catch (t: Throwable) {
+                onLog("[launcher] 补齐 $name 失败: ${t.message}")
+            }
+        }
+    }
+
 }
