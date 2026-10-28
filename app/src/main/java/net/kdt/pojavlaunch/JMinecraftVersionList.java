@@ -69,7 +69,14 @@ public class JMinecraftVersionList {
             @Keep
             public static class ArgRules {
                 public String action;
-                public String features;
+                /**
+                 * In version.json this is a JSON object (e.g. {"is_demo_user": true}).
+                 * Mojang also uses it at library-lookup time as {"name":"...","value":"..."}.
+                 * Declaring it as String makes Gson throw:
+                 * "Expected a string but was BEGIN_OBJECT ... $.libraries[1].rules[0].features"
+                 * so keep it permissive.
+                 */
+                public Object features;
                 public ArgOS os;
 
                 @Keep
