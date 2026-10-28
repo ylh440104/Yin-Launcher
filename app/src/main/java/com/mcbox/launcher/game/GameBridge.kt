@@ -12,7 +12,7 @@ import com.mcbox.core.model.AccountType
 import com.mcbox.core.model.AccountUuid
 import com.mcbox.launcher.data.InstanceStore
 import com.mcbox.launcher.data.SettingsStore
-import com.mcbox.launcher.runtime.PojavGameLauncher
+import com.mcbox.launcher.runtime.NativeJavaLauncher
 import com.mcbox.launcher.runtime.NativeSelfCheck
 import com.mcbox.launcher.runtime.RuntimeManager
 import net.kdt.pojavlaunch.utils.JREUtils
@@ -97,22 +97,45 @@ object GameBridge {
                 )
 
 
-                activity.appendStatus("启动 JVM (Pojav 原版链路)")
+                activity.appendStatus("启动 JVM (子进程模式)")
                 exited.set(false)
                 val logFile = File(paths.logs, "game-${System.currentTimeMillis()}.log")
-                val exit = PojavGameLauncher.launch(
-                    activity = activity,
-                    gameRoot = paths.root.absolutePath,
-                    instanceDir = instanceDir.absolutePath,
-                    versionId = instance.versionId,
-                    memoryMb = memory,
-                    username = account.displayName,
-                    uuid = account.uuid,
-                    accessToken = account.accessToken,
-                    renderer = renderer
-                )
+                logFile.parentFile?.mkdirs()
+                val logWriter = logFile.bufferedWriter()
+                fun writeLog(line: String) {
+                    try {
+                        logWriter.appendLine(line)
+                        logWriter.flush()
+                    } catch (ignored: Throwable) {
+                    }
+                    android.util.Log.i("JavaOut", line)
+                    activity.runOnUiThread { activity.appendStatus(line.take(120)) }
+                }
+                val result = try {
+                    NativeJavaLauncher.launch(
+                        context = activity.applicationContext,
+                        paths = paths,
+                        version = merged,
+                        versionId = instance.versionId,
+                        instanceDir = instanceDir,
+                        jreHome = runtime.home,
+                        username = account.displayName,
+                        uuid = account.uuid,
+                        accessToken = account.accessToken,
+                        memoryMb = memory,
+                        width = width,
+                        height = height,
+                        onLog = ::writeLog
+                    )
+                } finally {
+                    try {
+                        logWriter.close()
+                    } catch (ignored: Throwable) {
+                    }
+                }
+                writeLog("[launcher] process exited with ${result.exitCode}")
                 exited.set(true)
-                activity.onGameExit(exit)
+                activity.onGameExit(result.exitCode)
             } catch (t: Throwable) {
                 val msg = t.stackTraceToString()
                 try {

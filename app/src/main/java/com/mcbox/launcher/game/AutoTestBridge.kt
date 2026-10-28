@@ -16,7 +16,7 @@ import com.mcbox.core.model.VersionJson
 import com.mcbox.launcher.data.Instance
 import com.mcbox.launcher.data.InstanceStore
 import com.mcbox.launcher.data.SettingsStore
-import com.mcbox.launcher.runtime.PojavGameLauncher
+
 import com.mcbox.launcher.runtime.RuntimeManager
 import net.kdt.pojavlaunch.utils.JREUtils
 import java.io.File
@@ -113,17 +113,7 @@ object AutoTestBridge {
                     accessToken = "0"
                 )
 
-                val exit = PojavGameLauncher.launch(
-                    activity = context as? androidx.appcompat.app.AppCompatActivity,
-                    gameRoot = paths.root.absolutePath,
-                    instanceDir = File(paths.root, "autotest").absolutePath,
-                    versionId = versionId,
-                    memoryMb = 1024,
-                    username = "AutoTester",
-                    uuid = "00000000-0000-0000-0000-000000000000",
-                    accessToken = "0",
-                    renderer = "opengles3"
-                )
+                val exit = -1
                 step("jvm-launched", exit >= 0, "exit=$exit")
                 step("FULL_TEST_DONE", true)
             } catch (t: Throwable) {

@@ -8,7 +8,6 @@ import android.widget.FrameLayout
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
 import com.mcbox.launcher.R
-import net.kdt.pojavlaunch.utils.JREUtils
 import org.lwjgl.glfw.CallbackBridge
 
 class GameActivity : AppCompatActivity(), GameSurfaceView.Listener {
@@ -83,10 +82,7 @@ class GameActivity : AppCompatActivity(), GameSurfaceView.Listener {
         val height = surfaceView.height.coerceAtLeast(1)
         if (launched) return
         launched = true
-        val bridgeOk = JREUtils.safeSetupBridgeWindow(holder.surface)
-        if (!bridgeOk) {
-            appendStatus("Surface 桥接不可用，改用软件模式继续")
-        }
+        // 子进程模式不经过 Pojav 的 AWT 桥接，surface 仅用于覆盖层显示。
         statusView.visibility = View.GONE
         GameBridge.start(this, intent, holder, width, height)
     }
@@ -130,7 +126,6 @@ class GameActivity : AppCompatActivity(), GameSurfaceView.Listener {
 
     override fun onDestroy() {
         super.onDestroy()
-        JREUtils.safeReleaseBridgeWindow()
     }
 
     fun surfaceWidth() = CallbackBridge.windowWidth
