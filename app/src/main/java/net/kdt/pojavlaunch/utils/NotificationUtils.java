@@ -8,7 +8,7 @@ import android.os.Build;
 
 import androidx.core.app.NotificationCompat;
 
-import net.kdt.pojavlaunch.R;
+import com.mcbox.launcher.R;
 
 public class NotificationUtils {
 
