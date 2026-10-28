@@ -131,12 +131,11 @@ object NativeJavaLauncher {
         // 否则 libjavaexec.so 依赖的 libjli.so 解析不到。
         // Kotlin 与 Java 混编时无法直接引用 net.kdt.* 的静态方法，这里统一走反射。
         val jreUtils = Class.forName("net.kdt.pojavlaunch.utils.JREUtils")
-        try {
-            jreUtils.getMethod("setLdLibraryPath", String::class.java).invoke(null, libPath)
-            onLog("[launcher] setLdLibraryPath ok")
-        } catch (t: Throwable) {
-            onLog("[launcher] setLdLibraryPath failed: ${t.message}")
-        }
+        // 注意：不要调用 setLdLibraryPath。Pojav 的实现在 libdl.so 里 dlsym
+        // android_update_LD_LIBRARY_PATH 后无条件调用，Android 13 的 app
+        // namespace 拿不到该私有符号，会抛 UnsatisfiedLinkError。
+        // libjli.so 已随 APK 打进 nativeLibraryDir，与 libjavaexec.so 同目录，
+        // linker 按 SONAME 同目录解析即可，不需要改 LD_LIBRARY_PATH。
         try {
             android.system.Os.setenv("LD_LIBRARY_PATH", libPath, true)
         } catch (t: Throwable) {
