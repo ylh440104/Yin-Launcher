@@ -12,7 +12,7 @@ import com.mcbox.core.model.AccountType
 import com.mcbox.core.model.AccountUuid
 import com.mcbox.launcher.data.InstanceStore
 import com.mcbox.launcher.data.SettingsStore
-import com.mcbox.launcher.runtime.JavaLauncher
+import com.mcbox.launcher.runtime.PojavGameLauncher
 import com.mcbox.launcher.runtime.NativeSelfCheck
 import com.mcbox.launcher.runtime.RuntimeManager
 import net.kdt.pojavlaunch.utils.JREUtils
@@ -54,20 +54,7 @@ object GameBridge {
 
         thread = Thread {
             try {
-                activity.appendStatus("自检原生库")
-                val check = NativeSelfCheck.run(activity, activity.applicationInfo.nativeLibraryDir)
-                Log.i("GameBridge", "selfcheck allOk=${check.allOk} msg=${check.message}")
-                JREUtils.appendLog("selfcheck allOk=${check.allOk} ${check.message}")
-                activity.appendStatus(check.message)
-                if (!check.allOk) {
-                    activity.appendStatus("原生库不可用，已停止启动，避免崩溃")
-                    exited.set(true)
-                    activity.onGameExit(-1)
-                    return@Thread
-                }
-                activity.appendStatus("加载 JVM 库")
-                JavaLauncher(activity.applicationContext, activity.applicationInfo.nativeLibraryDir)
-                    .loadJvmLibrariesQuiet(runtime)
+                Class.forName("net.kdt.pojavlaunch.utils.JREUtils").getMethod("ensureLoaded").invoke(null)
                 CallbackBridge.sendUpdateWindowSize(width, height)
                 activity.appendStatus("解析版本 ${instance.versionId}")
                 val resolver = VersionResolver(paths)
@@ -109,25 +96,20 @@ object GameBridge {
                     versionType = merged.type.ifEmpty { "release" }
                 )
 
-                val launcher = JavaLauncher(activity.applicationContext, activity.applicationInfo.nativeLibraryDir)
-                launcher.renderer = renderer
-                launcher.rendererLibrary = settings.rendererLibrary
-                launcher.glesVersion = settings.glesVersion
-                launcher.zink = settings.zink
-                launcher.forceVsync = settings.vsync
-                launcher.bigCoreAffinity = settings.bigCore
 
-                activity.appendStatus("启动 JVM (Java ${runtime.javaMajor})")
+                activity.appendStatus("启动 JVM (Pojav 原版链路)")
                 exited.set(false)
                 val logFile = File(paths.logs, "game-${System.currentTimeMillis()}.log")
-                val exit = launcher.launch(
+                val exit = PojavGameLauncher.launch(
                     activity = activity,
-                    runtime = runtime,
-                    config = config,
-                    resolver = resolver,
-                    gameDir = instanceDir,
-                    cacheDir = activity.cacheDir,
-                    logFile = logFile
+                    gameRoot = paths.root.absolutePath,
+                    instanceDir = instanceDir.absolutePath,
+                    versionId = instance.versionId,
+                    memoryMb = memory,
+                    username = account.displayName,
+                    uuid = account.uuid,
+                    accessToken = account.accessToken,
+                    renderer = renderer
                 )
                 exited.set(true)
                 activity.onGameExit(exit)

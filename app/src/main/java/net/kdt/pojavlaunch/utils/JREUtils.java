@@ -5,6 +5,7 @@ import static net.kdt.pojavlaunch.Architecture.is64BitsDevice;
 import static net.kdt.pojavlaunch.Tools.LOCAL_RENDERER;
 import static net.kdt.pojavlaunch.Tools.NATIVE_LIB_DIR;
 import static net.kdt.pojavlaunch.Tools.currentDisplayMetrics;
+import static net.kdt.pojavlaunch.Tools.shareLog;
 import static net.kdt.pojavlaunch.prefs.LauncherPreferences.PREF_DUMP_SHADERS;
 import static net.kdt.pojavlaunch.prefs.LauncherPreferences.PREF_VSYNC_IN_ZINK;
 import static net.kdt.pojavlaunch.prefs.LauncherPreferences.PREF_ZINK_PREFER_SYSTEM_DRIVER;
@@ -14,6 +15,7 @@ import android.content.*;
 import android.os.Build;
 import android.system.*;
 import android.util.*;
+import android.widget.Toast;
 
 import androidx.appcompat.app.AppCompatActivity;
 
@@ -23,6 +25,8 @@ import java.util.*;
 import net.kdt.pojavlaunch.*;
 import net.kdt.pojavlaunch.extra.ExtraConstants;
 import net.kdt.pojavlaunch.extra.ExtraCore;
+import net.kdt.pojavlaunch.lifecycle.LifecycleAwareAlertDialog;
+import net.kdt.pojavlaunch.multirt.MultiRTUtils;
 import net.kdt.pojavlaunch.multirt.Runtime;
 import net.kdt.pojavlaunch.plugins.FFmpegPlugin;
 import net.kdt.pojavlaunch.prefs.*;
@@ -136,8 +140,12 @@ public class JREUtils {
 
     }
 
-    public static void relocateLibPath(String jreHome) {
-        String JRE_ARCHITECTURE = "arm64-v8a";
+    public static void relocateLibPath(Runtime runtime, String jreHome) {
+        String JRE_ARCHITECTURE = runtime.arch;
+        if (Architecture.archAsInt(JRE_ARCHITECTURE) == ARCH_X86){
+            JRE_ARCHITECTURE = "i386/i486/i586";
+        }
+
         for (String arch : JRE_ARCHITECTURE.split("/")) {
             File f = new File(jreHome, "lib/" + arch);
             if (f.exists() && f.isDirectory()) {
@@ -161,7 +169,7 @@ public class JREUtils {
         LD_LIBRARY_PATH = ldLibraryPath.toString();
     }
 
-    public static void setJavaEnvironment(Context activity, String jreHome) throws Throwable {
+    public static void setJavaEnvironment(Activity activity, String jreHome) throws Throwable {
         Map<String, String> envMap = new ArrayMap<>();
         envMap.put("POJAV_NATIVEDIR", NATIVE_LIB_DIR);
         envMap.put("JAVA_HOME", jreHome);
@@ -187,8 +195,7 @@ public class JREUtils {
 
 
         // The OPEN GL version is changed according
-        Object glVer = ExtraCore.getValue(ExtraConstants.OPEN_GL_VERSION);
-        if (glVer != null) envMap.put("LIBGL_ES", (String) glVer);
+        envMap.put("LIBGL_ES", (String) ExtraCore.getValue(ExtraConstants.OPEN_GL_VERSION));
 
         envMap.put("FORCE_VSYNC", String.valueOf(LauncherPreferences.PREF_FORCE_VSYNC));
 
@@ -270,15 +277,15 @@ public class JREUtils {
             reader.close();
         }
     }
-    public static void launchJavaVM(final Activity activity, final String runtimeHome, File gameDirectory, final List<String> JVMArgs, final String userArgsString) throws Throwable {
-        final Context appCtx = activity != null ? activity.getApplication() : null;
+    public static void launchJavaVM(final AppCompatActivity activity, final Runtime runtime, File gameDirectory, final List<String> JVMArgs, final String userArgsString) throws Throwable {
+        String runtimeHome = MultiRTUtils.getRuntimeHome(runtime.name).getAbsolutePath();
 
-        JREUtils.relocateLibPath(runtimeHome);
+        JREUtils.relocateLibPath(runtime, runtimeHome);
 
-        setJavaEnvironment(appCtx, runtimeHome);
+        setJavaEnvironment(activity, runtimeHome);
 
         final String graphicsLib = loadGraphicsLibrary();
-        List<String> userArgs = getJavaArgs(appCtx, runtimeHome, userArgsString);
+        List<String> userArgs = getJavaArgs(activity, runtimeHome, userArgsString);
 
         //Remove arguments that can interfere with the good working of the launcher
         purgeArg(userArgs,"-Xms");
@@ -308,18 +315,26 @@ public class JREUtils {
         userArgs.add("-XX:ActiveProcessorCount=" + java.lang.Runtime.getRuntime().availableProcessors());
 
         userArgs.addAll(JVMArgs);
+        
+        System.out.println(JVMArgs);
 
         initJavaRuntime(runtimeHome);
-        if (appCtx != null) setupExitMethod(appCtx);
+        JREUtils.setupExitMethod(activity.getApplication());
         JREUtils.initializeHooks();
         chdir(gameDirectory == null ? Tools.DIR_GAME_NEW : gameDirectory.getAbsolutePath());
         userArgs.add(0,"java"); //argv[0] is the program name according to C standard.
 
         final int exitCode = VMLauncher.launchJVM(userArgs.toArray(new String[0]));
         Logger.appendToLog("Java Exit code: " + exitCode);
-        lastExitCode = exitCode;
+        if (exitCode != 0) {
+            LifecycleAwareAlertDialog.DialogCreator dialogCreator = (dialog, builder)->
+                    builder.setMessage("Game exited with code " + exitCode)
+                    .setPositiveButton("OK", (dialogInterface, which)-> {});
+
+            LifecycleAwareAlertDialog.haltOnDialog(activity.getLifecycle(), activity, dialogCreator);
+        }
+        Tools.fullyExit();
     }
-    public static int lastExitCode = 0;
 
     /**
      *  Gives an argument list filled with both the user args
@@ -512,43 +527,6 @@ public class JREUtils {
     public static native void setupExitMethod(Context context);
     // Obtain AWT screen pixels to render on Android SurfaceView
     public static native int[] renderAWTScreenFrame(/* Object canvas, int width, int height */);
-
-    public static volatile String lastDlopenError = "";
-    public static boolean safeDlopen(String path) {
-        try { return dlopen(path); } catch (Throwable t) { lastDlopenError = t.toString(); return false; }
-    }
-    public static boolean safeSetupBridgeWindow(Object surface) {
-        try { setupBridgeWindow(surface); return true; } catch (Throwable t) { return false; }
-    }
-    public static boolean safeReleaseBridgeWindow() {
-        try { releaseBridgeWindow(); return true; } catch (Throwable t) { return false; }
-    }
-    public static synchronized void ensureLoaded() {
-        try { System.loadLibrary("exithook"); } catch (Throwable ignored) {}
-        try { System.loadLibrary("pojavexec"); } catch (Throwable ignored) {}
-        try { System.loadLibrary("pojavexec_awt"); } catch (Throwable ignored) {}
-    }
-    public static void beginLog(java.io.File logFile) {
-        try {
-            if (logFile.getParentFile() != null) logFile.getParentFile().mkdirs();
-            if (logFile.exists()) logFile.delete();
-            logFile.createNewFile();
-            Logger.begin(logFile.getAbsolutePath());
-        } catch (Throwable ignored) {
-        }
-    }
-    public static void appendLog(String line) {
-        try { Logger.appendToLog(line + "\n"); } catch (Throwable ignored) {}
-    }
-    public static boolean safeChdir(String path) {
-        try { chdir(path); return true; } catch (Throwable t) { return false; }
-    }
-    public static boolean safeInitializeHooks() {
-        try { initializeHooks(); return true; } catch (Throwable t) { return false; }
-    }
-    public static boolean safeSetupExitMethod(Context context) {
-        try { setupExitMethod(context); return true; } catch (Throwable t) { return false; }
-    }
     static {
         System.loadLibrary("exithook");
         System.loadLibrary("pojavexec");

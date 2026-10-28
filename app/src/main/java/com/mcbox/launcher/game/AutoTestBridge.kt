@@ -16,7 +16,7 @@ import com.mcbox.core.model.VersionJson
 import com.mcbox.launcher.data.Instance
 import com.mcbox.launcher.data.InstanceStore
 import com.mcbox.launcher.data.SettingsStore
-import com.mcbox.launcher.runtime.JavaLauncher
+import com.mcbox.launcher.runtime.PojavGameLauncher
 import com.mcbox.launcher.runtime.RuntimeManager
 import net.kdt.pojavlaunch.utils.JREUtils
 import java.io.File
@@ -123,26 +123,16 @@ object AutoTestBridge {
                     accessToken = "0"
                 )
 
-                val exit = launcher.launch(
-                    activity = null,
-                    runtime = runtime,
-                    config = com.mcbox.core.launch.LaunchConfig(
-                        versionId = versionId,
-                        versionJson = merged,
-                        gameDir = File(paths.root, "autotest"),
-                        assetsDir = paths.assets,
-                        librariesDir = paths.libraries,
-                        nativesDir = paths.nativeDir(versionId),
-                        classpath = classpath,
-                        account = account,
-                        maxMemoryMb = 1024,
-                        minMemoryMb = 512,
-                        javaMajor = runtime.javaMajor
-                    ),
-                    resolver = resolver,
-                    gameDir = File(paths.root, "autotest"),
-                    cacheDir = context.cacheDir,
-                    logFile = File(paths.logs, "autotest.log")
+                val exit = PojavGameLauncher.launch(
+                    activity = context as? androidx.appcompat.app.AppCompatActivity,
+                    gameRoot = paths.root.absolutePath,
+                    instanceDir = File(paths.root, "autotest").absolutePath,
+                    versionId = versionId,
+                    memoryMb = 1024,
+                    username = "AutoTester",
+                    uuid = "00000000-0000-0000-0000-000000000000",
+                    accessToken = "0",
+                    renderer = "opengles3"
                 )
                 step("jvm-launched", exit >= 0, "exit=$exit")
                 step("FULL_TEST_DONE", true)
@@ -165,11 +155,11 @@ class AutoTestReceiver : BroadcastReceiver() {
     }
 }
 
-class AutoTestActivity : android.app.Activity() {
+class AutoTestActivity : androidx.appcompat.app.AppCompatActivity() {
     override fun onCreate(savedInstanceState: android.os.Bundle?) {
         super.onCreate(savedInstanceState)
         android.util.Log.i("YinAutoTest", "activity launched")
-        AutoTestBridge.runFullTest(applicationContext)
+        AutoTestBridge.runFullTest(this)
         finish()
     }
 }
