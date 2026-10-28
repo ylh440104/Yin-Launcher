@@ -1,4 +1,5 @@
 package net.kdt.pojavlaunch.utils;
+import com.mcbox.launcher.R;
 
 import static net.kdt.pojavlaunch.Architecture.ARCH_X86;
 import static net.kdt.pojavlaunch.Architecture.is64BitsDevice;

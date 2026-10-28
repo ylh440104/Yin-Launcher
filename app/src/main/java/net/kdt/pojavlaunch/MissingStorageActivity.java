@@ -1,4 +1,5 @@
 package net.kdt.pojavlaunch;
+import com.mcbox.launcher.R;
 
 import androidx.appcompat.app.AppCompatActivity;
 

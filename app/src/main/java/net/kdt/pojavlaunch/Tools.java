@@ -1,4 +1,5 @@
 package net.kdt.pojavlaunch;
+import com.mcbox.launcher.R;
 
 import static android.os.Build.VERSION.SDK_INT;
 import static android.os.Build.VERSION_CODES.P;
