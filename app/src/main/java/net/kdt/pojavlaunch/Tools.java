@@ -190,6 +190,15 @@ public final class Tools {
      * Any value (in)directly dependent on DIR_GAME_HOME should be set only here.
      * You ABSOLUTELY MUST check for storage presence using checkStorageRoot() before calling this.
      */
+    public static void init(Context ctx, String gameHome) {
+        initEarlyConstants(ctx);
+        DIR_GAME_HOME = gameHome;
+        DIR_GAME_NEW = gameHome + "/.minecraft";
+        DIR_HOME_VERSION = DIR_GAME_NEW + "/versions";
+        DIR_HOME_LIBRARY = DIR_GAME_NEW + "/libraries";
+        ASSETS_PATH = DIR_GAME_NEW + "/assets";
+        currentDisplayMetrics = getDisplayMetrics(ctx);
+    }
     public static void initStorageConstants(Context ctx){
         initEarlyConstants(ctx);
         DIR_GAME_HOME = getPojavStorageRoot(ctx).getAbsolutePath();

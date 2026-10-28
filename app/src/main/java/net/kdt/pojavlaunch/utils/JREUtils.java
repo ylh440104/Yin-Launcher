@@ -326,6 +326,7 @@ public class JREUtils {
 
         final int exitCode = VMLauncher.launchJVM(userArgs.toArray(new String[0]));
         Logger.appendToLog("Java Exit code: " + exitCode);
+        lastExitCode = exitCode;
         if (exitCode != 0) {
             LifecycleAwareAlertDialog.DialogCreator dialogCreator = (dialog, builder)->
                     builder.setMessage("Game exited with code " + exitCode)
@@ -527,6 +528,42 @@ public class JREUtils {
     public static native void setupExitMethod(Context context);
     // Obtain AWT screen pixels to render on Android SurfaceView
     public static native int[] renderAWTScreenFrame(/* Object canvas, int width, int height */);
+    public static int lastExitCode = 0;
+    public static volatile String lastDlopenError = "";
+    public static synchronized void ensureLoaded() {
+        try { System.loadLibrary("exithook"); } catch (Throwable ignored) {}
+        try { System.loadLibrary("pojavexec"); } catch (Throwable ignored) {}
+        try { System.loadLibrary("pojavexec_awt"); } catch (Throwable ignored) {}
+    }
+    public static void beginLog(java.io.File logFile) {
+        try {
+            if (logFile.getParentFile() != null) logFile.getParentFile().mkdirs();
+            if (logFile.exists()) logFile.delete();
+            logFile.createNewFile();
+            Logger.begin(logFile.getAbsolutePath());
+        } catch (Throwable ignored) {}
+    }
+    public static void appendLog(String line) {
+        try { Logger.appendToLog(line + "\n"); } catch (Throwable ignored) {}
+    }
+    public static boolean safeChdir(String path) {
+        try { chdir(path); return true; } catch (Throwable t) { return false; }
+    }
+    public static boolean safeInitializeHooks() {
+        try { initializeHooks(); return true; } catch (Throwable t) { return false; }
+    }
+    public static boolean safeSetupExitMethod(Context context) {
+        try { setupExitMethod(context); return true; } catch (Throwable t) { return false; }
+    }
+    public static boolean safeDlopen(String path) {
+        try { return dlopen(path); } catch (Throwable t) { lastDlopenError = t.toString(); return false; }
+    }
+    public static boolean safeSetupBridgeWindow(Object surface) {
+        try { setupBridgeWindow(surface); return true; } catch (Throwable t) { return false; }
+    }
+    public static boolean safeReleaseBridgeWindow() {
+        try { releaseBridgeWindow(); return true; } catch (Throwable t) { return false; }
+    }
     static {
         System.loadLibrary("exithook");
         System.loadLibrary("pojavexec");
