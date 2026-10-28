@@ -124,16 +124,22 @@ object NativeJavaLauncher {
 
         // dlopen 走 linker namespace，必须先把 JRE 的 lib 目录塞进该 namespace，
         // 否则 libjavaexec.so 依赖的 libjli.so 解析不到。
+        // Kotlin 与 Java 混编时无法直接引用 net.kdt.* 的静态方法，这里统一走反射。
+        val jreUtils = Class.forName("net.kdt.pojavlaunch.utils.JREUtils")
         try {
-            net.kdt.pojavlaunch.utils.JREUtils.setLdLibraryPath(libPath)
+            jreUtils.getMethod("setLdLibraryPath", String::class.java).invoke(null, libPath)
             onLog("[launcher] setLdLibraryPath ok")
         } catch (t: Throwable) {
             onLog("[launcher] setLdLibraryPath failed: ${t.message}")
         }
-        android.system.Os.setenv("LD_LIBRARY_PATH", libPath, true)
-
+        try {
+            android.system.Os.setenv("LD_LIBRARY_PATH", libPath, true)
+        } catch (t: Throwable) {
+            onLog("[launcher] setenv failed: ${t.message}")
+        }
         val exit = try {
-            net.kdt.pojavlaunch.utils.JREUtils.executeBinary(argv.toTypedArray())
+            jreUtils.getMethod("executeBinary", Array<String>::class.java)
+                .invoke(null, argv.toTypedArray()) as Int
         } catch (t: Throwable) {
             onLog("[launcher] executeBinary threw: ${t.javaClass.simpleName}: ${t.message}")
             -1
