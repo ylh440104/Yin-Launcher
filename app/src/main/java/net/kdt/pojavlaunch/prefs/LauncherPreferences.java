@@ -70,8 +70,20 @@ public class LauncherPreferences {
 
 
     public static void loadPreferences(Context ctx) {
+        if (DEFAULT_PREF == null) {
+            DEFAULT_PREF = androidx.preference.PreferenceManager.getDefaultSharedPreferences(ctx);
+        }
         //Required for CTRLDEF_FILE and MultiRT
-        Tools.initStorageConstants(ctx);
+        if (Tools.NATIVE_LIB_DIR == null || Tools.DIR_DATA == null) {
+            Tools.initStorageConstants(ctx);
+        }
+        if (Tools.DIR_GAME_HOME == null) {
+            Tools.DIR_GAME_HOME = ctx.getFilesDir().getParent();
+            Tools.DIR_GAME_NEW = Tools.DIR_GAME_HOME + "/.minecraft";
+            Tools.DIR_HOME_VERSION = Tools.DIR_GAME_NEW + "/versions";
+            Tools.DIR_HOME_LIBRARY = Tools.DIR_GAME_NEW + "/libraries";
+            Tools.ASSETS_PATH = Tools.DIR_GAME_NEW + "/assets";
+        }
         boolean isDevicePowerful = isDevicePowerful(ctx);
 
         PREF_RENDERER = DEFAULT_PREF.getString("renderer", "opengles2");

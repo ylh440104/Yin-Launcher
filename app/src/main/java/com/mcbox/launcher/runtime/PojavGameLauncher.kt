@@ -28,7 +28,17 @@ object PojavGameLauncher {
         val rootFile = File(gameRoot)
         val rootParent = rootFile.parentFile?.absolutePath ?: gameRoot
 
-        Tools.initEarlyConstants(activity?.applicationContext ?: throw IllegalArgumentException("context required"))
+        val ctx = activity?.applicationContext
+            ?: throw IllegalArgumentException("context required")
+
+        // 1) 先让 Pojav 初始化自己的常量与偏好（它会调用 initStorageConstants）
+        Tools.initEarlyConstants(ctx)
+        LauncherPreferences.loadPreferences(ctx)
+        LauncherPreferences.PREF_RAM_ALLOCATION = memoryMb
+        LauncherPreferences.PREF_RENDERER = renderer
+        LauncherPreferences.PREF_CUSTOM_JAVA_ARGS = ""
+
+        // 2) 再用本启动器的真实游戏目录覆盖（必须在 loadPreferences 之后）
         Tools.DIR_GAME_HOME = rootParent
         Tools.DIR_GAME_NEW = rootFile.absolutePath
         Tools.DIR_HOME_VERSION = rootFile.absolutePath + "/versions"
@@ -37,11 +47,6 @@ object PojavGameLauncher {
         Tools.DIR_HOME_CRASH = rootFile.absolutePath + "/crash-reports"
         Tools.OBSOLETE_RESOURCES_PATH = rootFile.absolutePath + "/resources"
         Tools.LOCAL_RENDERER = renderer
-
-        LauncherPreferences.loadPreferences(activity?.applicationContext ?: throw IllegalArgumentException("context required"))
-        LauncherPreferences.PREF_RAM_ALLOCATION = memoryMb
-        LauncherPreferences.PREF_RENDERER = renderer
-        LauncherPreferences.PREF_CUSTOM_JAVA_ARGS = ""
 
         val account = MinecraftAccount()
         account.username = username
