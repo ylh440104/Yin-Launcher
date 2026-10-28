@@ -114,7 +114,19 @@ object GameBridge {
                 exited.set(true)
                 activity.onGameExit(exit)
             } catch (t: Throwable) {
-                JREUtils.appendLog("launch failed: ${t.stackTraceToString()}")
+                val msg = t.stackTraceToString()
+                try {
+                    android.util.Log.e("GameBridge", "launch failed", t)
+                    File(paths.logs, "launch-error.txt").apply {
+                        parentFile?.mkdirs()
+                        writeText(msg)
+                    }
+                } catch (ignored: Throwable) {
+                }
+                try {
+                    JREUtils.appendLog("launch failed: $msg")
+                } catch (ignored: Throwable) {
+                }
                 exited.set(true)
                 activity.onGameExit(-2)
                 activity.appendStatus("启动失败: ${t.message}")
