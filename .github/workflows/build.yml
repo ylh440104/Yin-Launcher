@@ -85,6 +85,28 @@ jobs:
             cp tmpjre/bin/java app/src/main/jniLibs/arm64-v8a/libjavaexec.so
             chmod +x app/src/main/jniLibs/arm64-v8a/libjavaexec.so
             file app/src/main/jniLibs/arm64-v8a/libjavaexec.so
+
+            # libjavaexec.so 的 DT_NEEDED 里有 libjli.so。dlopen 时 linker 在
+            # classloader-namespace 里按 SONAME 查找，JRE 目录不在该 namespace 中，
+            # 因此把 libjli.so 一并放进 nativeLibraryDir，与 libjavaexec.so 同目录即可解析。
+            tar -xJf app/src/main/assets/runtime/jre21/universal.tar.xz -C tmpjre ./lib/libjli.so 2>/dev/null               || tar -xJf app/src/main/assets/runtime/jre21/bin-arm64.tar.xz -C tmpjre ./lib/libjli.so 2>/dev/null               || true
+            # libjli.so 自身 DT_NEEDED 含 libz.so，Android JRE 不带它，
+            # 从系统库复制一份同目录，保证 dlopen 的依赖链闭合。
+            for syslib in /system/lib64/libz.so /apex/com.android.runtime/lib64/bionic/libz.so; do
+              if [ -f "$syslib" ]; then
+                cp "$syslib" app/src/main/jniLibs/arm64-v8a/libz.so
+                echo "LIBZ_PACKED from $syslib"
+                break
+              fi
+            done
+            if [ -f tmpjre/lib/libjli.so ]; then
+              cp tmpjre/lib/libjli.so app/src/main/jniLibs/arm64-v8a/libjli.so
+              echo "LIBJLI_PACKED"
+            else
+              echo "ERROR: 未能提取 libjli.so"
+              tar -tJf app/src/main/assets/runtime/jre21/universal.tar.xz | grep -i 'libjli' | head
+              exit 1
+            fi
             echo "JAVA_EXEC_PACKED"
           else
             echo "ERROR: 未能从 bin-arm64.tar.xz 提取 ./bin/java"
