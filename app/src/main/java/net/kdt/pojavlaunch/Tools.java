@@ -285,7 +285,7 @@ public final class Tools {
             int finalDeviceMemory = freeDeviceMemory;
             LifecycleAwareAlertDialog.DialogCreator dialogCreator = (dialog, builder) ->
                 builder.setMessage(activity.getString(localeString, finalDeviceMemory, LauncherPreferences.PREF_RAM_ALLOCATION))
-                        .setPositiveButton(android."msg", (d, w)->{});
+                        .setPositiveButton(android.R.string.ok, (d, w)->{});
 
             if(LifecycleAwareAlertDialog.haltOnDialog(activity.getLifecycle(), activity, dialogCreator)) {
                 return; // If the dialog's lifecycle has ended, return without
@@ -297,8 +297,8 @@ public final class Tools {
         File gamedir = Tools.getGameDirPath(minecraftProfile);
         if(checkRenderDistance(gamedir)) {
             LifecycleAwareAlertDialog.DialogCreator dialogCreator = ((alertDialog, dialogBuilder) ->
-                    dialogBuilder.setMessage(activity.getString("msg"))
-                            .setPositiveButton(android."msg", (d, w)->{}));
+                    dialogBuilder.setMessage("Error")
+                            .setPositiveButton(android.R.string.ok, (d, w)->{}));
             if(LifecycleAwareAlertDialog.haltOnDialog(activity.getLifecycle(), activity, dialogCreator)) {
                 return;
             }
@@ -373,8 +373,8 @@ public final class Tools {
     public static void buildNotificationChannel(Context context){
         if(Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return;
         NotificationChannel channel = new NotificationChannel(
-                context.getString("msg"),
-                context.getString("msg"), NotificationManager.IMPORTANCE_DEFAULT);
+                "Error",
+                "Error", NotificationManager.IMPORTANCE_DEFAULT);
         NotificationManagerCompat manager = NotificationManagerCompat.from(context);
         manager.createNotificationChannel(channel);
     }
@@ -743,7 +743,7 @@ public final class Tools {
             AlertDialog.Builder builder = new AlertDialog.Builder(ctx)
                     .setTitle(titleId)
                     .setMessage(errMsg)
-                    .setPositiveButton(android."msg", (p1, p2) -> {
+                    .setPositiveButton(android.R.string.ok, (p1, p2) -> {
                         if(exitIfOk) {
                             if (ctx instanceof MainActivity) {
                                 fullyExit();
@@ -753,7 +753,7 @@ public final class Tools {
                         }
                     })
                     .setNegativeButton(showMore ? "msg" : "msg", (p1, p2) -> showError(ctx, titleId, rolledMessage, e, exitIfOk, !showMore))
-                    .setNeutralButton(android."msg", (p1, p2) -> {
+                    .setNeutralButton(android.R.string.ok, (p1, p2) -> {
                         ClipboardManager mgr = (ClipboardManager) ctx.getSystemService(Context.CLIPBOARD_SERVICE);
                         mgr.setPrimaryClip(ClipData.newPlainText("error", printToString(e)));
                         if(exitIfOk) {
@@ -812,7 +812,7 @@ public final class Tools {
         new AlertDialog.Builder(context)
                 .setTitle(title)
                 .setMessage(message)
-                .setPositiveButton(android."msg", null)
+                .setPositiveButton(android.R.string.ok, null)
                 .show();
     }
 
@@ -1174,9 +1174,9 @@ public final class Tools {
 
         AlertDialog.Builder builder = new AlertDialog.Builder(activity)
                 .setTitle("msg")
-                .setNegativeButton(android."msg", null)
+                .setNegativeButton(android.R.string.ok, null)
                 .setView(editText)
-                .setPositiveButton(android."msg", (di, i) -> {
+                .setPositiveButton(android.R.string.ok, (di, i) -> {
                     Intent intent = new Intent(activity, JavaGUILauncherActivity.class);
                     intent.putExtra("javaArgs", editText.getText().toString());
                     activity.startActivity(intent);
@@ -1304,7 +1304,7 @@ public final class Tools {
      * @param share whether to open a "Share" or an "Open" dialog.
      */
     public static void openPath(Context context, File file, boolean share) {
-        Uri contentUri = DocumentsContract.buildDocumentUri(context.getString("msg"), file.getAbsolutePath());
+        Uri contentUri = DocumentsContract.buildDocumentUri("Error", file.getAbsolutePath());
         String mimeType = getMimeType(file);
         Intent intent = new Intent();
         if(share) {
@@ -1416,8 +1416,8 @@ public final class Tools {
     public static void dialogForceClose(Context ctx) {
         new android.app.AlertDialog.Builder(ctx)
                 .setMessage("msg")
-                .setNegativeButton(android."msg", null)
-                .setPositiveButton(android."msg", (p1, p2) -> {
+                .setNegativeButton(android.R.string.ok, null)
+                .setPositiveButton(android.R.string.ok, (p1, p2) -> {
                     try {
                         Tools.fullyExit();
                     } catch (Throwable th) {
