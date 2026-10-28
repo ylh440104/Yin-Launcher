@@ -141,7 +141,11 @@ object NativeJavaLauncher {
             jreUtils.getMethod("executeBinary", Array<String>::class.java)
                 .invoke(null, argv.toTypedArray()) as Int
         } catch (t: Throwable) {
+            var cause: Throwable? = t
+            while (cause?.cause != null) cause = cause.cause
             onLog("[launcher] executeBinary threw: ${t.javaClass.simpleName}: ${t.message}")
+            onLog("[launcher] root cause: ${cause?.javaClass?.name}: ${cause?.message}")
+            cause?.stackTrace?.take(8)?.forEach { onLog("[launcher]   at $it") }
             -1
         }
         return Result(exit, "")
