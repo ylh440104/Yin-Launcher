@@ -55,8 +55,26 @@ object PojavGameLauncher {
 
         val versionInfo = Tools.getVersionInfo(versionId)
         val requiredJava = versionInfo.javaVersion?.majorVersion ?: 8
-        val runtimeName = Tools.pickRuntime(profile, requiredJava)
+
+        // 明确按版本要求选 Java：优先精确版本，其次最近的更高版本
+        val available = MultiRTUtils.getRuntimes()
+        android.util.Log.i("PojavGameLauncher",
+            "MULTIRT_HOME=" + Tools.MULTIRT_HOME + " runtimes=" +
+                available.joinToString { it.name + ":" + it.javaVersion })
+        val exact = MultiRTUtils.getExactJreName(requiredJava)
+        val nearest = MultiRTUtils.getNearestJreName(requiredJava)
+        val runtimeName = exact ?: nearest
+            ?: throw IllegalStateException(
+                "No Java " + requiredJava + " runtime in " + Tools.MULTIRT_HOME +
+                " (found: " + available.joinToString { it.name + ":" + it.javaVersion } + ")")
         val runtime = MultiRTUtils.forceReread(runtimeName)
+        if (runtime.javaVersion == 0 || runtime.versionString == null) {
+            throw IllegalStateException(
+                "Runtime not valid: " + runtimeName + " at " + MultiRTUtils.getRuntimeHome(runtimeName) +
+                " (missing or malformed release file)")
+        }
+        android.util.Log.i("PojavGameLauncher",
+            "selected runtime=" + runtimeName + " java=" + runtime.javaVersion + " arch=" + runtime.arch)
         val gamedir = File(instanceDir)
 
         Tools.disableSplash(gamedir)

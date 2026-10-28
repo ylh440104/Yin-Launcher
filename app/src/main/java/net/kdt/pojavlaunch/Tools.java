@@ -180,7 +180,7 @@ public final class Tools {
     public static void initEarlyConstants(Context ctx) {
         DIR_CACHE = ctx.getCacheDir();
         DIR_DATA = ctx.getFilesDir().getParent();
-        MULTIRT_HOME = DIR_DATA + "/runtimes";
+        MULTIRT_HOME = ctx.getFilesDir().getAbsolutePath() + "/runtimes";
         DIR_ACCOUNT_NEW = DIR_DATA + "/accounts";
         NATIVE_LIB_DIR = ctx.getApplicationInfo().nativeLibraryDir;
     }
