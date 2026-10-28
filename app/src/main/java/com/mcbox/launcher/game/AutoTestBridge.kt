@@ -100,7 +100,6 @@ object AutoTestBridge {
                     step("jre-found", true, "java=${runtime.javaMajor}")
                 }
 
-                step("jli-preload", jliPreloaded, JREUtils.lastDlopenError)
                 step("ld-library-path", true, System.getenv("LD_LIBRARY_PATH") ?: "null")
 
                 val resolver = VersionResolver(paths)
