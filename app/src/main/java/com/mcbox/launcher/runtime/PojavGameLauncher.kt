@@ -7,6 +7,8 @@ import net.kdt.pojavlaunch.Tools
 import net.kdt.pojavlaunch.multirt.MultiRTUtils
 import net.kdt.pojavlaunch.prefs.LauncherPreferences
 import net.kdt.pojavlaunch.utils.JREUtils
+import net.kdt.pojavlaunch.utils.OldVersionsUtils
+import net.kdt.pojavlaunch.plugins.FFmpegPlugin
 import net.kdt.pojavlaunch.value.MinecraftAccount
 import net.kdt.pojavlaunch.value.launcherprofiles.MinecraftProfile
 import java.io.File
@@ -59,7 +61,7 @@ object PojavGameLauncher {
 
         Tools.disableSplash(gamedir)
         val launchArgs = Tools.getMinecraftClientArgs(account, versionInfo, gamedir)
-        net.kdt.pojavlaunch.utils.OldVersionsUtils.selectOpenGlVersion(versionInfo)
+        OldVersionsUtils.selectOpenGlVersion(versionInfo)
         val launchClassPath = Tools.generateLaunchClassPath(versionInfo, versionId)
         val javaArgList = mutableListOf<String>()
         Tools.getCacioJavaArgs(javaArgList, runtime.javaVersion == 8)
@@ -81,7 +83,7 @@ object PojavGameLauncher {
         javaArgList.add(versionInfo.mainClass)
         javaArgList.addAll(launchArgs)
 
-        activity?.let { net.kdt.pojavlaunch.plugins.FFmpegPlugin.discover(it) }
+        activity?.let { FFmpegPlugin.discover(it) }
         JREUtils.launchJavaVM(activity, runtime, gamedir, javaArgList, "")
         return JREUtils.lastExitCode
     }

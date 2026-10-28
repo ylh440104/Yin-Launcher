@@ -100,15 +100,6 @@ object AutoTestBridge {
                     step("jre-found", true, "java=${runtime.javaMajor}")
                 }
 
-                val launcher = JavaLauncher(
-                    appContext,
-                    appContext.applicationInfo.nativeLibraryDir
-                )
-                launcher.initJreHome(runtime!!, File(paths.root, "autotest"), paths.temp)
-
-                val jliLib = File(runtime.home, "lib/libjli.so")
-                val jliPreloaded = jliLib.exists() && JREUtils.safeDlopen(jliLib.absolutePath)
-                Log.i(TAG, "libjli preload: path=${jliLib.absolutePath} exists=${jliLib.exists()} ok=$jliPreloaded")
                 step("jli-preload", jliPreloaded, JREUtils.lastDlopenError)
                 step("ld-library-path", true, System.getenv("LD_LIBRARY_PATH") ?: "null")
 
