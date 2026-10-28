@@ -161,16 +161,54 @@ object NativeJavaLauncher {
         onLog("[launcher] app 数据目录不可执行，复制 JRE 到 ${target.absolutePath}")
         target.deleteRecursively()
         target.mkdirs()
-        jreHome.copyRecursively(target, overwrite = true)
-        // 恢复可执行位（copyRecursively 可能不保留）
-        listOf("bin", "lib", "lib/server", "lib/jli").forEach { sub ->
-            File(target, sub).listFiles()?.forEach { f ->
-                if (f.isFile) f.setExecutable(true, false)
-            }
+
+        // 只复制运行所需的目录，跳过 legal/ 等文档目录：
+        // JRE 里存在指向不存在的 target 的符号链接（如 legal/jdk.localedata/LICENSE），
+        // copyRecursively 遇到会抛 NoSuchFileException。
+        val requiredDirs = listOf("bin", "lib", "conf")
+        for (dirName in requiredDirs) {
+            val src = File(jreHome, dirName)
+            if (!src.exists()) continue
+            val dst = File(target, dirName)
+            copyTreeSkippingBrokenLinks(src, dst, onLog)
         }
+        // release 文件用于部分工具判断版本，能复制就复制
+        val releaseSrc = File(jreHome, "release")
+        if (releaseSrc.exists()) {
+            runCatching { releaseSrc.copyTo(File(target, "release"), overwrite = true) }
+        }
+
+        // 恢复可执行位
+        File(target, "bin").listFiles()?.forEach { it.setExecutable(true, false) }
+        File(target, "lib").listFiles()?.forEach { it.setExecutable(true, false) }
+        File(target, "lib/server").listFiles()?.forEach { it.setExecutable(true, false) }
+
         stamp.writeText(want)
         onLog("[launcher] JRE 复制完成")
         return target
+    }
+
+    /** 复制目录树，跳过断链的符号链接与不可读文件，避免整体失败。 */
+    private fun copyTreeSkippingBrokenLinks(src: File, dst: File, onLog: (String) -> Unit) {
+        dst.mkdirs()
+        val children = src.listFiles() ?: return
+        for (child in children) {
+            val target = File(dst, child.name)
+            try {
+                if (child.isDirectory) {
+                    copyTreeSkippingBrokenLinks(child, target, onLog)
+                } else {
+                    // 断链的符号链接：canonicalPath 解析失败或目标不存在
+                    if (!child.exists()) {
+                        onLog("[launcher] skip broken link: ${child.absolutePath}")
+                        continue
+                    }
+                    child.copyTo(target, overwrite = true)
+                }
+            } catch (t: Throwable) {
+                onLog("[launcher] skip ${child.absolutePath}: ${t.message}")
+            }
+        }
     }
 
     /** 用一次轻量的 exec 探测当前进程是否真的能执行 java。 */
