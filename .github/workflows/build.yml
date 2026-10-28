@@ -74,6 +74,24 @@ jobs:
           cp payload/extract/assets/components/jre/bin-arm64.tar.xz app/src/main/assets/runtime/jre8/
           du -sh app/src/main/assets/runtime/*
 
+          # Android 禁止从 app 私有数据目录（app_data_file）执行文件，
+          # 只有 nativeLibraryDir（apk_data_file）允许 exec。
+          # 因此把 JRE 的 java 启动器以 .so 名字打包进 jniLibs，
+          # 安装后 app 可以直接 ProcessBuilder 执行 $nativeLibraryDir/libjavaexec.so。
+          mkdir -p tmpjre
+          tar -xJf app/src/main/assets/runtime/jre21/universal.tar.xz -C tmpjre bin/java
+          tar -xJf app/src/main/assets/runtime/jre21/bin-arm64.tar.xz -C tmpjre bin/java 2>/dev/null || true
+          if [ -f tmpjre/bin/java ]; then
+            cp tmpjre/bin/java app/src/main/jniLibs/arm64-v8a/libjavaexec.so
+            chmod +x app/src/main/jniLibs/arm64-v8a/libjavaexec.so
+            file app/src/main/jniLibs/arm64-v8a/libjavaexec.so
+            echo "JAVA_EXEC_PACKED"
+          else
+            echo "ERROR: 未能在 JRE 压缩包中找到 bin/java"
+            find tmpjre -name 'java' -o -name 'java.*' | head
+            exit 1
+          fi
+
       - name: Build arm64 APK
         run: gradle :app:assembleDebug --stacktrace --no-daemon
 

@@ -38,12 +38,12 @@ object NativeJavaLauncher {
         val javaBin = File(jreHome, "bin/java")
         require(javaBin.exists()) { "java 二进制不存在: ${javaBin.absolutePath}" }
 
-        // Android 10+ 对 app 私有数据目录（app_data_file）禁止 exec，
-        // 直接 ProcessBuilder 会得到 EACCES(error=13)。
-        // 这里探测一次：不可执行时把整个 JRE 迁移到 app 的 codeCacheDir
-        // （其 SELinux 标签允许执行），并以迁移后的路径启动。
-        val execHome = ensureExecutableJre(context, jreHome, onLog)
-        val execJava = File(execHome, "bin/java")
+        // Android 的 SELinux 禁止从 app 私有数据目录（app_data_file）执行任何文件，
+        // 只有 nativeLibraryDir（apk_data_file）允许 exec。
+        // 因此 CI 会把 JRE 的 bin/java 以 libjavaexec.so 的名字打进 jniLibs，
+        // 安装后它就位于 nativeLibraryDir 里，可直接被 ProcessBuilder 执行。
+        val execJava = resolveExecutableJava(context, onLog)
+        val execHome = jreHome
 
         val libDir = File(execHome, "lib")
         val serverDir = File(libDir, "server")
@@ -136,106 +136,22 @@ object NativeJavaLauncher {
     }
 
     /**
-     * 返回一个「java 二进制可以被本 app 进程执行」的 JRE 根目录。
+     * 找到本进程真正可以执行的 java 启动器。
      *
-     * 背景：Android 10+ 给 app 私有数据目录打了 app_data_file 标签，
-     * SELinux 禁止从该标签执行文件，ProcessBuilder 会抛 EACCES(error=13)。
-     * 而 codeCacheDir 的标签允许执行。所以先探测原目录，
-     * 不可执行时把 JRE 复制到 codeCacheDir 下再返回。
+     * Android 的 SELinux 只允许从 nativeLibraryDir（apk_data_file 标签）执行文件，
+     * app 私有数据目录（files/、code_cache/ 等）全部禁止 exec，直接跑会得到
+     * error=13 Permission denied。CI 构建时已把 JRE 的 bin/java 以
+     * libjavaexec.so 的名字打进 jniLibs，安装后即位于 nativeLibraryDir。
      */
-    private fun ensureExecutableJre(
-        context: Context,
-        jreHome: File,
-        onLog: (String) -> Unit
-    ): File {
-        if (canExecuteDirectly(jreHome, onLog)) return jreHome
-
-        val target = File(context.codeCacheDir, "jre-exec")
-        val stamp = File(target, ".stamp")
-        val want = "${jreHome.absolutePath}:${jreHome.lastModified()}"
-        if (stamp.exists() && stamp.readText().trim() == want && File(target, "bin/java").exists()) {
-            onLog("[launcher] reuse executable JRE at ${target.absolutePath}")
-            return target
+    private fun resolveExecutableJava(context: Context, onLog: (String) -> Unit): File {
+        val fromLibs = File(context.applicationInfo.nativeLibraryDir, "libjavaexec.so")
+        if (fromLibs.exists()) {
+            onLog("[launcher] java exec = ${fromLibs.absolutePath} (nativeLibraryDir)")
+            return fromLibs
         }
-
-        onLog("[launcher] app 数据目录不可执行，复制 JRE 到 ${target.absolutePath}")
-        target.deleteRecursively()
-        target.mkdirs()
-
-        // 只复制运行所需的目录，跳过 legal/ 等文档目录：
-        // JRE 里存在指向不存在的 target 的符号链接（如 legal/jdk.localedata/LICENSE），
-        // copyRecursively 遇到会抛 NoSuchFileException。
-        val requiredDirs = listOf("bin", "lib", "conf")
-        for (dirName in requiredDirs) {
-            val src = File(jreHome, dirName)
-            if (!src.exists()) continue
-            val dst = File(target, dirName)
-            copyTreeSkippingBrokenLinks(src, dst, onLog)
-        }
-        // release 文件用于部分工具判断版本，能复制就复制
-        val releaseSrc = File(jreHome, "release")
-        if (releaseSrc.exists()) {
-            runCatching { releaseSrc.copyTo(File(target, "release"), overwrite = true) }
-        }
-
-        // 恢复可执行位
-        File(target, "bin").listFiles()?.forEach { it.setExecutable(true, false) }
-        File(target, "lib").listFiles()?.forEach { it.setExecutable(true, false) }
-        File(target, "lib/server").listFiles()?.forEach { it.setExecutable(true, false) }
-
-        stamp.writeText(want)
-        onLog("[launcher] JRE 复制完成")
-        return target
-    }
-
-    /** 复制目录树，跳过断链的符号链接与不可读文件，避免整体失败。 */
-    private fun copyTreeSkippingBrokenLinks(src: File, dst: File, onLog: (String) -> Unit) {
-        dst.mkdirs()
-        val children = src.listFiles() ?: return
-        for (child in children) {
-            val target = File(dst, child.name)
-            try {
-                if (child.isDirectory) {
-                    copyTreeSkippingBrokenLinks(child, target, onLog)
-                } else {
-                    // 断链的符号链接：canonicalPath 解析失败或目标不存在
-                    if (!child.exists()) {
-                        onLog("[launcher] skip broken link: ${child.absolutePath}")
-                        continue
-                    }
-                    child.copyTo(target, overwrite = true)
-                }
-            } catch (t: Throwable) {
-                onLog("[launcher] skip ${child.absolutePath}: ${t.message}")
-            }
-        }
-    }
-
-    /** 用一次轻量的 exec 探测当前进程是否真的能执行 java。 */
-    private fun canExecuteDirectly(jreHome: File, onLog: (String) -> Unit): Boolean {
-        val java = File(jreHome, "bin/java")
-        if (!java.exists()) return false
-        if (!java.canExecute()) {
-            onLog("[launcher] java 缺少执行位，尝试补上")
-            java.setExecutable(true, false)
-        }
-        return try {
-            val p = ProcessBuilder(java.absolutePath, "-version")
-                .redirectErrorStream(true)
-                .apply {
-                    environment()["LD_LIBRARY_PATH"] =
-                        listOf(File(jreHome, "lib"), File(jreHome, "lib/server"))
-                            .joinToString(":") { it.absolutePath }
-                }
-                .start()
-            p.inputStream.bufferedReader().readText()
-            val code = p.waitFor()
-            onLog("[launcher] exec probe exit=$code")
-            code == 0
-        } catch (t: Throwable) {
-            onLog("[launcher] exec probe failed: ${t.message}")
-            false
-        }
+        val fallback = File(context.filesDir, "runtimes/jre-21/bin/java")
+        onLog("[launcher] 警告: 未找到 libjavaexec.so，回退 ${fallback.absolutePath}（大概率 error=13）")
+        return fallback
     }
 
     /** 收集 classpath：libraries 目录中实际存在的 jar + 版本 jar。 */
