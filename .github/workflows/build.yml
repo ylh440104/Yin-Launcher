@@ -173,6 +173,24 @@ jobs:
           done
           echo "ARM_JRE_STRUCTURE_PASS (bionic-linked JRE validated: runs on Android ARM64, not on Linux glibc by design)"
 
+      - name: Validate JVM runtime layout (drives MultiRTUtils.read)
+        run: |
+          set -e
+          cd work
+          echo "=== release file ==="
+          head -5 jre/release
+          JAVA_VER=$(grep -oP 'JAVA_VERSION="\K[^"]+' jre/release)
+          echo "JAVA_VERSION=$JAVA_VER"
+          case "$JAVA_VER" in 21*) ;; *) echo "release JAVA_VERSION is not 21: $JAVA_VER"; exit 1;; esac
+          test -f jre/lib/libjli.so || { echo "libjli.so missing under jre/lib"; exit 1; }
+          test -f jre/lib/server/libjvm.so || { echo "lib/server/libjvm.so missing"; exit 1; }
+          echo "=== libjli NEEDED deps ==="
+          readelf -d jre/lib/libjli.so | grep NEEDED | head -8
+          echo "=== OS_ARCH ==="
+          grep -E '^OS_ARCH=' jre/release
+          grep -q 'OS_ARCH="aarch64"' jre/release || { echo "OS_ARCH is not aarch64"; exit 1; }
+          echo "JVM_RUNTIME_LAYOUT_PASS"
+
       - name: Verify game main class exists in client jar
         run: |
           set -e
