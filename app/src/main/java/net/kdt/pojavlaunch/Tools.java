@@ -1040,7 +1040,7 @@ public final class Tools {
     }
 
     public static void printLauncherInfo(String gameVersion, String javaArguments) {
-        Logger.appendToLog("Info: Launcher version: " + BuildConfig.VERSION_NAME);
+        Logger.appendToLog("Info: Launcher version: " + "1.0");
         Logger.appendToLog("Info: Architecture: " + Architecture.archAsString(DEVICE_ARCHITECTURE));
         Logger.appendToLog("Info: Device model: " + Build.MANUFACTURER + " " +Build.MODEL);
         Logger.appendToLog("Info: API version: " + SDK_INT);
@@ -1159,13 +1159,7 @@ public final class Tools {
             return;
         }
 
-        if(!customJavaArgs){ // Launch the intent to get the jar file
-            if(!(activity instanceof LauncherActivity))
-                throw new IllegalStateException("Cannot start Mod Installer without LauncherActivity");
-            LauncherActivity launcherActivity = (LauncherActivity)activity;
-            launcherActivity.modInstallerLauncher.launch(null);
-            return;
-        }
+        if(!customJavaArgs){ return; }
 
         // install mods with custom arguments
         final EditText editText = new EditText(activity);
@@ -1177,7 +1171,7 @@ public final class Tools {
                 .setNegativeButton(android.R.string.ok, null)
                 .setView(editText)
                 .setPositiveButton(android.R.string.ok, (di, i) -> {
-                    Intent intent = new Intent(activity, JavaGUILauncherActivity.class);
+                    Intent intent = new Intent();
                     intent.putExtra("javaArgs", editText.getText().toString());
                     activity.startActivity(intent);
                 });
@@ -1199,7 +1193,7 @@ public final class Tools {
      * from ACTION_OPEN_DOCUMENT
      */
     public static void launchModInstaller(Activity activity, @NonNull Uri uri){
-        Intent intent = new Intent(activity, JavaGUILauncherActivity.class);
+        Intent intent = new Intent();
         intent.putExtra("modUri", uri);
         activity.startActivity(intent);
     }

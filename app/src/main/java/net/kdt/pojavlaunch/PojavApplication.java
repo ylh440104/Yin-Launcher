@@ -52,7 +52,7 @@ public class PojavApplication extends Application {
 				Log.e(CRASH_REPORT_TAG, " - The crash stack trace was:", th);
 			}
 
-			ShowErrorActivity.showError(PojavApplication.this, crashFile.getAbsolutePath(), storagePermAllowed, th);
+			android.util.Log.e("PojavApp", "fatal", th);
 			Tools.fullyExit();
 		});
 		
