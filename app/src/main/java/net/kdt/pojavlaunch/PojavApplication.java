@@ -20,7 +20,7 @@ import java.util.concurrent.TimeUnit;
 
 import net.kdt.pojavlaunch.lifecycle.ContextExecutor;
 import net.kdt.pojavlaunch.prefs.LauncherPreferences;
-
+import net.kdt.pojavlaunch.tasks.AsyncAssetManager;
 import net.kdt.pojavlaunch.utils.*;
 import net.kdt.pojavlaunch.utils.FileUtils;
 
@@ -44,7 +44,7 @@ public class PojavApplication extends Application {
 				crashStream.append(" - Device: ").append(Build.PRODUCT).append(" ").append(Build.MODEL).append("\n");
 				crashStream.append(" - Android version: ").append(Build.VERSION.RELEASE).append("\n");
 				crashStream.append(" - Crash stack trace:\n");
-				crashStream.append(" - Launcher version: " + "1.0" + "\n");
+				crashStream.append(" - Launcher version: " + BuildConfig.VERSION_NAME + "\n");
 				crashStream.append(Log.getStackTraceString(th));
 				crashStream.close();
 			} catch (Throwable throwable) {
@@ -52,7 +52,7 @@ public class PojavApplication extends Application {
 				Log.e(CRASH_REPORT_TAG, " - The crash stack trace was:", th);
 			}
 
-			android.util.Log.e("PojavApp", "fatal", th);
+			FatalErrorActivity.showError(PojavApplication.this, crashFile.getAbsolutePath(), storagePermAllowed, th);
 			Tools.fullyExit();
 		});
 		
@@ -75,9 +75,9 @@ public class PojavApplication extends Application {
 												originalJNIDirectory.lastIndexOf("/"))
 												.concat("/x86");
 			}
-			
+			AsyncAssetManager.unpackRuntime(getAssets());
 		} catch (Throwable throwable) {
-			Intent ferrorIntent = new Intent(this, ShowErrorActivity.class);
+			Intent ferrorIntent = new Intent(this, FatalErrorActivity.class);
 			ferrorIntent.putExtra("throwable", throwable);
 			ferrorIntent.setFlags(FLAG_ACTIVITY_NEW_TASK);
 			startActivity(ferrorIntent);

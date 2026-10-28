@@ -197,7 +197,6 @@ public final class Tools {
         DIR_HOME_VERSION = DIR_GAME_NEW + "/versions";
         DIR_HOME_LIBRARY = DIR_GAME_NEW + "/libraries";
         ASSETS_PATH = DIR_GAME_NEW + "/assets";
-        currentDisplayMetrics = getDisplayMetrics(ctx);
     }
     public static void initStorageConstants(Context ctx){
         initEarlyConstants(ctx);
@@ -276,9 +275,9 @@ public final class Tools {
         Log.i("MemStat", "Free RAM: " + freeDeviceMemory + " Addressable: " + freeAddressSpace);
         if(freeDeviceMemory > freeAddressSpace && freeAddressSpace != -1) {
             freeDeviceMemory = freeAddressSpace;
-            localeString = "msg";
+            localeString = R.string.address_memory_warning_msg;
         } else {
-            localeString = "msg";
+            localeString = R.string.memory_warning_msg;
         }
 
         if(LauncherPreferences.PREF_RAM_ALLOCATION > freeDeviceMemory) {
@@ -297,7 +296,7 @@ public final class Tools {
         File gamedir = Tools.getGameDirPath(minecraftProfile);
         if(checkRenderDistance(gamedir)) {
             LifecycleAwareAlertDialog.DialogCreator dialogCreator = ((alertDialog, dialogBuilder) ->
-                    dialogBuilder.setMessage("Error")
+                    dialogBuilder.setMessage(activity.getString(R.string.ltw_render_distance_warning_msg))
                             .setPositiveButton(android.R.string.ok, (d, w)->{}));
             if(LifecycleAwareAlertDialog.haltOnDialog(activity.getLifecycle(), activity, dialogCreator)) {
                 return;
@@ -373,8 +372,8 @@ public final class Tools {
     public static void buildNotificationChannel(Context context){
         if(Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return;
         NotificationChannel channel = new NotificationChannel(
-                "Error",
-                "Error", NotificationManager.IMPORTANCE_DEFAULT);
+                context.getString(R.string.notif_channel_id),
+                context.getString(R.string.notif_channel_name), NotificationManager.IMPORTANCE_DEFAULT);
         NotificationManagerCompat manager = NotificationManagerCompat.from(context);
         manager.createNotificationChannel(channel);
     }
@@ -657,7 +656,7 @@ public final class Tools {
     public static void updateWindowSize(Activity activity) {
         currentDisplayMetrics = getDisplayMetrics(activity);
 
-        View dimensionView = null;
+        View dimensionView = activity.findViewById(R.id.dimension_tracker);
 
         if(dimensionView != null) {
             int width = dimensionView.getWidth();
@@ -716,16 +715,16 @@ public final class Tools {
     }
 
     public static void showError(final Context ctx, final Throwable e, final boolean exitIfOk) {
-        showError(ctx, "msg", null ,e, exitIfOk, false);
+        showError(ctx, R.string.global_error, null ,e, exitIfOk, false);
     }
     public static void showError(final Context ctx, final int rolledMessage, final Throwable e) {
-        showError(ctx, "msg", ctx.getString(rolledMessage), e, false, false);
+        showError(ctx, R.string.global_error, ctx.getString(rolledMessage), e, false, false);
     }
     public static void showError(final Context ctx, final String rolledMessage, final Throwable e) {
-        showError(ctx, "msg", rolledMessage, e, false, false);
+        showError(ctx, R.string.global_error, rolledMessage, e, false, false);
     }
     public static void showError(final Context ctx, final String rolledMessage, final Throwable e, boolean exitIfOk) {
-        showError(ctx, "msg", rolledMessage, e, exitIfOk, false);
+        showError(ctx, R.string.global_error, rolledMessage, e, exitIfOk, false);
     }
     public static void showError(final Context ctx, final int titleId, final Throwable e, final boolean exitIfOk) {
         showError(ctx, titleId, null, e, exitIfOk, false);
@@ -752,8 +751,8 @@ public final class Tools {
                             }
                         }
                     })
-                    .setNegativeButton(showMore ? "msg" : "msg", (p1, p2) -> showError(ctx, titleId, rolledMessage, e, exitIfOk, !showMore))
-                    .setNeutralButton(android.R.string.ok, (p1, p2) -> {
+                    .setNegativeButton(showMore ? R.string.error_show_less : R.string.error_show_more, (p1, p2) -> showError(ctx, titleId, rolledMessage, e, exitIfOk, !showMore))
+                    .setNeutralButton(android.R.string.copy, (p1, p2) -> {
                         ClipboardManager mgr = (ClipboardManager) ctx.getSystemService(Context.CLIPBOARD_SERVICE);
                         mgr.setPrimaryClip(ClipData.newPlainText("error", printToString(e)));
                         if(exitIfOk) {
@@ -1040,7 +1039,7 @@ public final class Tools {
     }
 
     public static void printLauncherInfo(String gameVersion, String javaArguments) {
-        Logger.appendToLog("Info: Launcher version: " + "1.0");
+        Logger.appendToLog("Info: Launcher version: " + BuildConfig.VERSION_NAME);
         Logger.appendToLog("Info: Architecture: " + Architecture.archAsString(DEVICE_ARCHITECTURE));
         Logger.appendToLog("Info: Device model: " + Build.MANUFACTURER + " " +Build.MODEL);
         Logger.appendToLog("Info: API version: " + SDK_INT);
@@ -1140,7 +1139,7 @@ public final class Tools {
         fragmentActivity.getSupportFragmentManager().beginTransaction()
                 .setReorderingAllowed(true)
                 .addToBackStack(fragmentClass.getName())
-                .replace(android.R.id.content, fragmentClass, bundle, fragmentTag).commit();
+                .replace(R.id.container_fragment, fragmentClass, bundle, fragmentTag).commit();
     }
 
     public static void backToMainMenu(FragmentActivity fragmentActivity) {
@@ -1155,11 +1154,17 @@ public final class Tools {
 
     public static void installMod(Activity activity, boolean customJavaArgs) {
         if (MultiRTUtils.getExactJreName(8) == null) {
-            Toast.makeText(activity, "msg", Toast.LENGTH_LONG).show();
+            Toast.makeText(activity, R.string.multirt_nojava8rt, Toast.LENGTH_LONG).show();
             return;
         }
 
-        if(!customJavaArgs){ return; }
+        if(!customJavaArgs){ // Launch the intent to get the jar file
+            if(!(activity instanceof LauncherActivity))
+                throw new IllegalStateException("Cannot start Mod Installer without LauncherActivity");
+            LauncherActivity launcherActivity = (LauncherActivity)activity;
+            launcherActivity.modInstallerLauncher.launch(null);
+            return;
+        }
 
         // install mods with custom arguments
         final EditText editText = new EditText(activity);
@@ -1167,11 +1172,11 @@ public final class Tools {
         editText.setHint("-jar/-cp /path/to/file.jar ...");
 
         AlertDialog.Builder builder = new AlertDialog.Builder(activity)
-                .setTitle("msg")
-                .setNegativeButton(android.R.string.ok, null)
+                .setTitle(R.string.alerttitle_installmod)
+                .setNegativeButton(android.R.string.cancel, null)
                 .setView(editText)
                 .setPositiveButton(android.R.string.ok, (di, i) -> {
-                    Intent intent = new Intent();
+                    Intent intent = new Intent(activity, JavaGUILauncherActivity.class);
                     intent.putExtra("javaArgs", editText.getText().toString());
                     activity.startActivity(intent);
                 });
@@ -1193,7 +1198,7 @@ public final class Tools {
      * from ACTION_OPEN_DOCUMENT
      */
     public static void launchModInstaller(Activity activity, @NonNull Uri uri){
-        Intent intent = new Intent();
+        Intent intent = new Intent(activity, JavaGUILauncherActivity.class);
         intent.putExtra("modUri", uri);
         activity.startActivity(intent);
     }
@@ -1298,7 +1303,7 @@ public final class Tools {
      * @param share whether to open a "Share" or an "Open" dialog.
      */
     public static void openPath(Context context, File file, boolean share) {
-        Uri contentUri = DocumentsContract.buildDocumentUri("Error", file.getAbsolutePath());
+        Uri contentUri = DocumentsContract.buildDocumentUri(context.getString(R.string.storageProviderAuthorities), file.getAbsolutePath());
         String mimeType = getMimeType(file);
         Intent intent = new Intent();
         if(share) {
@@ -1367,8 +1372,8 @@ public final class Tools {
     public static RenderersList getCompatibleRenderers(Context context) {
         if(sCompatibleRenderers != null) return sCompatibleRenderers;
         Resources resources = context.getResources();
-        String[] defaultRenderers = new String[]{"opengles2","opengles2_5","opengles3"};
-        String[] defaultRendererNames = new String[]{"GL4ES 1.1.4","GL4ES 1.1.5","GL4ES 1.1.6"};
+        String[] defaultRenderers = resources.getStringArray(R.array.renderer_values);
+        String[] defaultRendererNames = resources.getStringArray(R.array.renderer);
         boolean deviceHasVulkan = checkVulkanSupport(context.getPackageManager());
         // Currently, only 32-bit x86 does not have the Zink binary
         boolean deviceHasZinkBinary = !(Architecture.is32BitsDevice() && Architecture.isx86Device());
@@ -1409,8 +1414,8 @@ public final class Tools {
 
     public static void dialogForceClose(Context ctx) {
         new android.app.AlertDialog.Builder(ctx)
-                .setMessage("msg")
-                .setNegativeButton(android.R.string.ok, null)
+                .setMessage(R.string.mcn_exit_confirm)
+                .setNegativeButton(android.R.string.cancel, null)
                 .setPositiveButton(android.R.string.ok, (p1, p2) -> {
                     try {
                         Tools.fullyExit();

@@ -10,7 +10,7 @@ import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 
 import net.kdt.pojavlaunch.lifecycle.ContextExecutorTask;
-
+import net.kdt.pojavlaunch.utils.NotificationUtils;
 
 import java.io.Serializable;
 
@@ -57,7 +57,13 @@ public class ShowErrorActivity extends Activity {
         public void executeWithApplication(Context context) {
             Intent showErrorIntent = new Intent(context, ShowErrorActivity.class);
             showErrorIntent.putExtra(ERROR_ACTIVITY_REMOTE_TASK, this);
-            context.startActivity(showErrorIntent);
+            NotificationUtils.sendBasicNotification(context,
+                    R.string.notif_error_occured,
+                    R.string.notif_error_occured_desc,
+                    showErrorIntent,
+                    NotificationUtils.PENDINGINTENT_CODE_SHOW_ERROR,
+                    NotificationUtils.NOTIFICATION_ID_SHOW_ERROR
+            );
         }
     }
 

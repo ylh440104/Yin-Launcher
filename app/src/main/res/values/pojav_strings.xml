@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="address_memory_warning_msg">Available memory: %1$d MB, requested: %2$d MB</string>
+    <string name="alerttitle_installmod">Install mod</string>
+    <string name="cancel">Cancel</string>
+    <string name="copy">Copy</string>
+    <string name="error_fatal">Fatal error</string>
+    <string name="error_show_less">Show less</string>
+    <string name="error_show_more">Show more</string>
+    <string name="exception_failed_to_unpack_jre17">Failed to unpack JRE 17</string>
+    <string name="global_error">Error</string>
+    <string name="global_restart">Restart</string>
+    <string name="ltw_render_distance_warning_msg">Render distance was reduced</string>
+    <string name="mcn_exit_confirm">Exit game?</string>
+    <string name="memory_warning_msg">Available memory: %1$d MB, requested: %2$d MB</string>
+    <string name="multirt_nojava8rt">Java 8 runtime not found</string>
+    <string name="newdl_downloading_game_files">Downloading game files</string>
+    <string name="newdl_downloading_game_files_size">Downloading %1$s / %2$s</string>
+    <string name="newdl_downloading_metadata">Downloading metadata</string>
+    <string name="newdl_extracting_native_libraries">Extracting native libraries</string>
+    <string name="newdl_starting">Starting</string>
+    <string name="notif_channel_id">mcbox_channel</string>
+    <string name="notif_channel_name">McBox</string>
+    <string name="notif_error_occured">Error</string>
+    <string name="notif_error_occured_desc">An error occurred</string>
+    <string name="ok">OK</string>
+    <string name="storageProviderAuthorities">com.mcbox.launcher.documents</string>
+    <string-array name="renderer">
+        <item>GL4ES 1.1.4</item>
+        <item>GL4ES 1.1.5</item>
+        <item>GL4ES 1.1.6</item>
+    </string-array>
+    <string-array name="renderer_values">
+        <item>opengles2</item>
+        <item>opengles2_5</item>
+        <item>opengles3</item>
+    </string-array>
+    <integer name="resolution_seekbar_increment">1</integer>
+    <item type="id" name="dimension_tracker"/>
+    <item type="id" name="container_fragment"/>
+</resources>

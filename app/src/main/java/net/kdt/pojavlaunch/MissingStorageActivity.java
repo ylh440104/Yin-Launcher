@@ -8,6 +8,6 @@ public class MissingStorageActivity extends AppCompatActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        // no layout
+        setContentView(R.layout.storage_test_no_sdcard);
     }
 }
