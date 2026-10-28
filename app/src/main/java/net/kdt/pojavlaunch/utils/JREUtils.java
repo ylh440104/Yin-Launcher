@@ -521,6 +521,8 @@ public class JREUtils {
         return GLInfoUtils.getGlInfo().glesMajorVersion;
     }
     public static native int chdir(String path);
+    /** dlopen(argv[0]) 后调用其 main —— 等价于进程内执行 java，绕过 SELinux exec 限制。 */
+    public static native int executeBinary(String[] args);
     public static native boolean dlopen(String libPath);
     public static native void setLdLibraryPath(String ldLibraryPath);
     public static native void setupBridgeWindow(Object surface);

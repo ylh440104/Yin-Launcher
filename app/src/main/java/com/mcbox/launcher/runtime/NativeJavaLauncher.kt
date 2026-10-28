@@ -112,27 +112,33 @@ object NativeJavaLauncher {
         onLog("[launcher] main = ${version.mainClass}")
         onLog("[launcher] LD_LIBRARY_PATH = $libPath")
 
-        val pb = ProcessBuilder(args)
-        pb.directory(instanceDir)
-        pb.redirectErrorStream(true)
-        pb.environment().apply {
-            put("LD_LIBRARY_PATH", libPath)
-            put("HOME", paths.root.absolutePath)
-            put("TMPDIR", context.cacheDir.absolutePath)
-            // 让 LWJGL/glfw 走 Android 的 EGL 实现
-            put("LIBGL_ES", "2")
-        }
+        // 关键：Android 的 SELinux 禁止 execve app 目录里的任何文件（error=13），
+        // 但允许 dlopen 一个 shared object。libpojavexec.so 的 executeBinary()
+        // 会 dlopen(argv[0]) 再 dlsym("main") 后调用，等价于「进程内执行 java」。
+        // 因此这里不走 ProcessBuilder，而是调用该 native 入口。
+        val argv = ArrayList<String>(args.size)
+        argv += execJava.absolutePath // argv[0] = 要 dlopen 的 java 二进制
+        argv += args.drop(1)          // 其余 JVM/游戏参数原样传递
 
-        val process = pb.start()
-        val sb = StringBuilder()
-        process.inputStream.bufferedReader().useLines { lines ->
-            lines.forEach { line ->
-                sb.append(line).append('\n')
-                onLog(line)
-            }
+        onLog("[launcher] invoking executeBinary, argv=${argv.size}")
+
+        // dlopen 走 linker namespace，必须先把 JRE 的 lib 目录塞进该 namespace，
+        // 否则 libjavaexec.so 依赖的 libjli.so 解析不到。
+        try {
+            net.kdt.pojavlaunch.utils.JREUtils.setLdLibraryPath(libPath)
+            onLog("[launcher] setLdLibraryPath ok")
+        } catch (t: Throwable) {
+            onLog("[launcher] setLdLibraryPath failed: ${t.message}")
         }
-        val exit = process.waitFor()
-        return Result(exit, sb.toString())
+        android.system.Os.setenv("LD_LIBRARY_PATH", libPath, true)
+
+        val exit = try {
+            net.kdt.pojavlaunch.utils.JREUtils.executeBinary(argv.toTypedArray())
+        } catch (t: Throwable) {
+            onLog("[launcher] executeBinary threw: ${t.javaClass.simpleName}: ${t.message}")
+            -1
+        }
+        return Result(exit, "")
     }
 
     /**
