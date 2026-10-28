@@ -102,7 +102,6 @@ android {
 dependencies {
     implementation(fileTree(mapOf("dir" to "libs", "include" to listOf("*.jar"))))
     implementation("commons-codec:commons-codec:1.15")
-    implementation("org.apache.commons:commons-compress:1.26.0")
     implementation(project(":core"))
     implementation("androidx.core:core-ktx:1.13.1")
     implementation("androidx.appcompat:appcompat:1.7.0")
