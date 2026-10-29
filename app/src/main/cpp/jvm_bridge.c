@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <pthread.h>
 #include <android/log.h>
 
 #define TAG "JvmBridge"
@@ -13,21 +14,44 @@ typedef jint (*CreateJavaVM_t)(JavaVM **, void **, void *);
 
 static JavaVM *g_vm = NULL;
 
-/* 拿到属于 JVM 的 JNIEnv。调用线程可能是 ART 线程，必须先 Attach。 */
-static JNIEnv *get_env(void) {
-    if (g_vm == NULL) return NULL;
-    JNIEnv *e = NULL;
-    jint rc = (*g_vm)->GetEnv(g_vm, (void **) &e, JNI_VERSION_1_6);
-    if (rc == JNI_EDETACHED) {
-        JavaVMAttachArgs a;
-        a.version = JNI_VERSION_1_6;
-        a.name = "mcbox-main";
-        a.group = NULL;
-        if ((*g_vm)->AttachCurrentThread(g_vm, &e, &a) != JNI_OK) return NULL;
-    } else if (rc != JNI_OK) {
-        return NULL;
+/* 由 Kotlin 侧传入、在专用线程里执行的全部参数 */
+typedef struct {
+    char *libjvmPath;
+    int optionCount;
+    char **options;
+    char *mainClass;
+    int argCount;
+    char **mainArgs;
+    int cpCount;
+    char **classpath;
+
+    /* 回传给 Kotlin 的结果 */
+    jint vmRc;
+    jint mainRc;
+    pthread_mutex_t lock;
+    pthread_cond_t cond;
+    int done;
+} LaunchJob;
+
+static char *dup_utf(JNIEnv *env, jstring s) {
+    if (s == NULL) return NULL;
+    const char *c = (*env)->GetStringUTFChars(env, s, NULL);
+    if (c == NULL) return NULL;
+    char *r = strdup(c);
+    (*env)->ReleaseStringUTFChars(env, s, c);
+    return r;
+}
+
+static char **dup_array(JNIEnv *env, jobjectArray arr, int *countOut) {
+    int n = arr == NULL ? 0 : (*env)->GetArrayLength(env, arr);
+    char **out = (char **) calloc(n > 0 ? n : 1, sizeof(char *));
+    for (int i = 0; i < n; i++) {
+        jstring s = (jstring) (*env)->GetObjectArrayElement(env, arr, i);
+        out[i] = dup_utf(env, s);
+        (*env)->DeleteLocalRef(env, s);
     }
-    return e;
+    *countOut = n;
+    return out;
 }
 
 static void dump_exception(JNIEnv *e, const char *where) {
@@ -46,137 +70,159 @@ static void dump_exception(JNIEnv *e, const char *where) {
     }
 }
 
-JNIEXPORT jint JNICALL
-Java_com_mcbox_launcher_runtime_JvmBridge_nativeCreateVm(JNIEnv *env, jclass clazz,
-        jstring libjvmPath, jobjectArray jvmOptions) {
-    const char *path = (*env)->GetStringUTFChars(env, libjvmPath, NULL);
-    void *handle = dlopen(path, RTLD_NOW | RTLD_GLOBAL);
+/*
+ * 专用线程：CreateJavaVM 和 main 都在这里执行。
+ *
+ * 之前把两者放在 ART 的工作线程上，JVM 内部线程对象没建立，
+ * KnotClient 一执行就在 libjvm 里空指针崩溃（SIGSEGV 0x24）。
+ */
+static void *launch_thread(void *arg) {
+    LaunchJob *job = (LaunchJob *) arg;
+
+    void *handle = dlopen(job->libjvmPath, RTLD_NOW | RTLD_GLOBAL);
     if (handle == NULL) {
-        LOGE("dlopen failed: %s : %s", path, dlerror());
-        (*env)->ReleaseStringUTFChars(env, libjvmPath, path);
-        return -10;
+        LOGE("dlopen libjvm failed: %s", dlerror());
+        job->vmRc = -10;
+        goto finish;
     }
     CreateJavaVM_t create = (CreateJavaVM_t) dlsym(handle, "JNI_CreateJavaVM");
     if (create == NULL) {
         LOGE("dlsym JNI_CreateJavaVM failed: %s", dlerror());
-        (*env)->ReleaseStringUTFChars(env, libjvmPath, path);
-        return -11;
+        job->vmRc = -11;
+        goto finish;
     }
-    (*env)->ReleaseStringUTFChars(env, libjvmPath, path);
 
-    int n = (*env)->GetArrayLength(env, jvmOptions);
-    JavaVMOption *opts = (JavaVMOption *) calloc(n > 0 ? n : 1, sizeof(JavaVMOption));
-    for (int i = 0; i < n; i++) {
-        jstring s = (jstring) (*env)->GetObjectArrayElement(env, jvmOptions, i);
-        opts[i].optionString = (char *) (*env)->GetStringUTFChars(env, s, NULL);
+    JavaVMOption *opts = (JavaVMOption *) calloc(
+            job->optionCount > 0 ? job->optionCount : 1, sizeof(JavaVMOption));
+    for (int i = 0; i < job->optionCount; i++) {
+        opts[i].optionString = job->options[i];
         opts[i].extraInfo = NULL;
     }
 
-    JavaVMInitArgs args;
-    args.version = JNI_VERSION_1_6;
-    args.nOptions = n;
-    args.options = opts;
-    args.ignoreUnrecognized = JNI_FALSE;
+    JavaVMInitArgs vargs;
+    vargs.version = JNI_VERSION_1_6;
+    vargs.nOptions = job->optionCount;
+    vargs.options = opts;
+    vargs.ignoreUnrecognized = JNI_FALSE;
 
     JNIEnv *jenv = NULL;
-    jint rc = create(&g_vm, (void **) &jenv, &args);
-    LOGI("JNI_CreateJavaVM rc=%d vm=%p", rc, (void *) g_vm);
-    return rc;
+    job->vmRc = create(&g_vm, (void **) &jenv, &vargs);
+    LOGI("JNI_CreateJavaVM rc=%d vm=%p env=%p", job->vmRc, (void *) g_vm, (void *) jenv);
+    if (job->vmRc != 0) goto finish;
+
+    /* 建 URLClassLoader */
+    jclass fileClass = (*jenv)->FindClass(jenv, "java/io/File");
+    if (fileClass == NULL) { dump_exception(jenv, "FindClass File"); job->mainRc = -30; goto finish; }
+    jmethodID fileCtor = (*jenv)->GetMethodID(jenv, fileClass, "<init>", "(Ljava/lang/String;)V");
+    jmethodID toURI = (*jenv)->GetMethodID(jenv, fileClass, "toURI", "()Ljava/net/URI;");
+    jclass uriClass = (*jenv)->FindClass(jenv, "java/net/URI");
+    if (uriClass == NULL) { dump_exception(jenv, "FindClass URI"); job->mainRc = -30; goto finish; }
+    jmethodID toURL = (*jenv)->GetMethodID(jenv, uriClass, "toURL", "()Ljava/net/URL;");
+
+    jclass urlClass = (*jenv)->FindClass(jenv, "java/net/URL");
+    if (urlClass == NULL) { dump_exception(jenv, "FindClass URL"); job->mainRc = -30; goto finish; }
+    jobjectArray urls = (*jenv)->NewObjectArray(jenv, job->cpCount, urlClass, NULL);
+    for (int i = 0; i < job->cpCount; i++) {
+        jstring p = (*jenv)->NewStringUTF(jenv, job->classpath[i]);
+        jobject f = (*jenv)->NewObject(jenv, fileClass, fileCtor, p);
+        jobject uri = (*jenv)->CallObjectMethod(jenv, f, toURI);
+        jobject url = (*jenv)->CallObjectMethod(jenv, uri, toURL);
+        (*jenv)->SetObjectArrayElement(jenv, urls, i, url);
+        (*jenv)->DeleteLocalRef(jenv, url);
+        (*jenv)->DeleteLocalRef(jenv, uri);
+        (*jenv)->DeleteLocalRef(jenv, f);
+        (*jenv)->DeleteLocalRef(jenv, p);
+    }
+    LOGI("classpath urls = %d", job->cpCount);
+
+    jclass clClass = (*jenv)->FindClass(jenv, "java/lang/ClassLoader");
+    jmethodID getSys = (*jenv)->GetStaticMethodID(jenv, clClass, "getSystemClassLoader",
+                                                 "()Ljava/lang/ClassLoader;");
+    jobject parent = (*jenv)->CallStaticObjectMethod(jenv, clClass, getSys);
+    if (parent == NULL) { dump_exception(jenv, "getSystemClassLoader"); job->mainRc = -31; goto finish; }
+
+    jclass uclClass = (*jenv)->FindClass(jenv, "java/net/URLClassLoader");
+    if (uclClass == NULL) { dump_exception(jenv, "FindClass URLClassLoader"); job->mainRc = -32; goto finish; }
+    jmethodID uclCtor = (*jenv)->GetMethodID(jenv, uclClass, "<init>",
+                                             "([Ljava/net/URL;Ljava/lang/ClassLoader;)V");
+    jobject loader = (*jenv)->NewObject(jenv, uclClass, uclCtor, urls, parent);
+    if (loader == NULL) { dump_exception(jenv, "new URLClassLoader"); job->mainRc = -33; goto finish; }
+    LOGI("URLClassLoader ready");
+
+    jmethodID loadClass = (*jenv)->GetMethodID(jenv, clClass, "loadClass",
+                                               "(Ljava/lang/String;)Ljava/lang/Class;");
+    jstring jname = (*jenv)->NewStringUTF(jenv, job->mainClass);
+    jclass mc = (jclass) (*jenv)->CallObjectMethod(jenv, loader, loadClass, jname);
+    (*jenv)->DeleteLocalRef(jenv, jname);
+    if (mc == NULL) { dump_exception(jenv, "loadClass main"); job->mainRc = -26; goto finish; }
+    LOGI("main class loaded: %s", job->mainClass);
+
+    jmethodID mid = (*jenv)->GetStaticMethodID(jenv, mc, "main", "([Ljava/lang/String;)V");
+    if (mid == NULL) { dump_exception(jenv, "GetStaticMethodID main"); job->mainRc = -24; goto finish; }
+
+    jclass strClass = (*jenv)->FindClass(jenv, "java/lang/String");
+    jobjectArray jargs = (*jenv)->NewObjectArray(jenv, job->argCount, strClass, NULL);
+    for (int i = 0; i < job->argCount; i++) {
+        jstring s = (*jenv)->NewStringUTF(jenv, job->mainArgs[i]);
+        (*jenv)->SetObjectArrayElement(jenv, jargs, i, s);
+        (*jenv)->DeleteLocalRef(jenv, s);
+    }
+
+    LOGI("invoking %s.main (%d args)", job->mainClass, job->argCount);
+    (*jenv)->CallStaticVoidMethod(jenv, mc, mid, jargs);
+    if ((*jenv)->ExceptionCheck(jenv)) {
+        dump_exception(jenv, "main");
+        job->mainRc = -25;
+    } else {
+        job->mainRc = 0;
+        LOGI("main returned normally");
+    }
+
+finish:
+    pthread_mutex_lock(&job->lock);
+    job->done = 1;
+    pthread_cond_signal(&job->cond);
+    pthread_mutex_unlock(&job->lock);
+    return NULL;
 }
 
-/*
- * 用 URLClassLoader 显式加载 classpath。
- *
- * 纯 JNI_CreateJavaVM 不会像 java launcher 那样依据 -Djava.class.path
- * 构造应用类加载器，所以 -cp 对这些 jar 无效，必须自己建 URLClassLoader。
- */
-JNIEXPORT jint JNICALL
-Java_com_mcbox_launcher_runtime_JvmBridge_nativeCallMain(JNIEnv *env, jclass clazz,
+JNIEXPORT jintArray JNICALL
+Java_com_mcbox_launcher_runtime_JvmBridge_nativeLaunch(JNIEnv *env, jclass clazz,
+        jstring libjvmPath, jobjectArray jvmOptions,
         jstring mainClassName, jobjectArray mainArgs, jobjectArray classpath) {
-    if (g_vm == NULL) return -20;
-    JNIEnv *e = get_env();
-    if (e == NULL) return -21;
+    LaunchJob job;
+    memset(&job, 0, sizeof(job));
+    job.libjvmPath = dup_utf(env, libjvmPath);
+    job.options = dup_array(env, jvmOptions, &job.optionCount);
+    job.mainClass = dup_utf(env, mainClassName);
+    job.mainArgs = dup_array(env, mainArgs, &job.argCount);
+    job.classpath = dup_array(env, classpath, &job.cpCount);
+    job.vmRc = -1;
+    job.mainRc = -1;
+    pthread_mutex_init(&job.lock, NULL);
+    pthread_cond_init(&job.cond, NULL);
 
-    /* main 类名：/ -> . */
-    const char *name = (*env)->GetStringUTFChars(env, mainClassName, NULL);
-    if (name == NULL) return -22;
-    char dotted[1024];
-    snprintf(dotted, sizeof(dotted), "%s", name);
-    for (char *p = dotted; *p; p++) if (*p == '/') *p = '.';
-    (*env)->ReleaseStringUTFChars(env, mainClassName, name);
-    LOGI("main class = %s", dotted);
-
-    /* 建 URL[] */
-    jclass fileClass = (*e)->FindClass(e, "java/io/File");
-    if (fileClass == NULL) { dump_exception(e, "FindClass File"); return -30; }
-    jmethodID fileCtor = (*e)->GetMethodID(e, fileClass, "<init>", "(Ljava/lang/String;)V");
-    jmethodID toURI = (*e)->GetMethodID(e, fileClass, "toURI", "()Ljava/net/URI;");
-    jclass uriClass = (*e)->FindClass(e, "java/net/URI");
-    jmethodID toURL = (*e)->GetMethodID(e, uriClass, "toURL", "()Ljava/net/URL;");
-
-    int cpCount = (*env)->GetArrayLength(env, classpath);
-    jclass urlClass = (*e)->FindClass(e, "java/net/URL");
-    jobjectArray urls = (*e)->NewObjectArray(e, cpCount, urlClass, NULL);
-    for (int i = 0; i < cpCount; i++) {
-        jstring p = (jstring) (*env)->GetObjectArrayElement(env, classpath, i);
-        jobject f = (*e)->NewObject(e, fileClass, fileCtor, p);
-        jobject uri = (*e)->CallObjectMethod(e, f, toURI);
-        jobject url = (*e)->CallObjectMethod(e, uri, toURL);
-        (*e)->SetObjectArrayElement(e, urls, i, url);
-        (*e)->DeleteLocalRef(e, url);
-        (*e)->DeleteLocalRef(e, uri);
-        (*e)->DeleteLocalRef(e, f);
-        (*e)->DeleteLocalRef(e, p);
-    }
-    LOGI("classpath urls = %d", cpCount);
-
-    /* 父加载器用当前线程的系统加载器，保证 JDK 类可见 */
-    jclass clClass = (*e)->FindClass(e, "java/lang/ClassLoader");
-    jmethodID getSys = (*e)->GetStaticMethodID(e, clClass, "getSystemClassLoader",
-                                               "()Ljava/lang/ClassLoader;");
-    jobject parent = (*e)->CallStaticObjectMethod(e, clClass, getSys);
-    if (parent == NULL) { dump_exception(e, "getSystemClassLoader"); return -31; }
-
-    jclass uclClass = (*e)->FindClass(e, "java/net/URLClassLoader");
-    if (uclClass == NULL) { dump_exception(e, "FindClass URLClassLoader"); return -32; }
-    jmethodID uclCtor = (*e)->GetMethodID(e, uclClass, "<init>",
-                                          "([Ljava/net/URL;Ljava/lang/ClassLoader;)V");
-    jobject loader = (*e)->NewObject(e, uclClass, uclCtor, urls, parent);
-    if (loader == NULL) { dump_exception(e, "new URLClassLoader"); return -33; }
-    LOGI("URLClassLoader created");
-
-    /* loader.loadClass(mainClass) */
-    jclass ldrClass = (*e)->FindClass(e, "java/lang/ClassLoader");
-    jmethodID loadClass = (*e)->GetMethodID(e, ldrClass, "loadClass",
-                                            "(Ljava/lang/String;)Ljava/lang/Class;");
-    jstring jname = (*e)->NewStringUTF(e, dotted);
-    jclass mc = (jclass) (*e)->CallObjectMethod(e, loader, loadClass, jname);
-    (*e)->DeleteLocalRef(e, jname);
-    if (mc == NULL) { dump_exception(e, "URLClassLoader.loadClass"); return -26; }
-    LOGI("main class loaded");
-
-    jmethodID mid = (*e)->GetStaticMethodID(e, mc, "main", "([Ljava/lang/String;)V");
-    if (mid == NULL) { dump_exception(e, "GetStaticMethodID(main)"); return -24; }
-
-    /* 参数数组 */
-    int argc = (*env)->GetArrayLength(env, mainArgs);
-    jclass strClass = (*e)->FindClass(e, "java/lang/String");
-    jobjectArray jargs = (*e)->NewObjectArray(e, argc, strClass, NULL);
-    for (int i = 0; i < argc; i++) {
-        jstring s = (jstring) (*env)->GetObjectArrayElement(env, mainArgs, i);
-        const char *c = (*env)->GetStringUTFChars(env, s, NULL);
-        jstring copy = (*e)->NewStringUTF(e, c ? c : "");
-        (*env)->ReleaseStringUTFChars(env, s, c);
-        (*e)->SetObjectArrayElement(e, jargs, i, copy);
-        (*e)->DeleteLocalRef(e, copy);
+    pthread_t tid;
+    pthread_attr_t attr;
+    pthread_attr_init(&attr);
+    /* JVM 需要较大栈，默认 pthread 栈不够 */
+    pthread_attr_setstacksize(&attr, 8 * 1024 * 1024);
+    int rc = pthread_create(&tid, &attr, launch_thread, &job);
+    if (rc != 0) {
+        LOGE("pthread_create failed: %d", rc);
+        return NULL;
     }
 
-    LOGI("invoking %s.main with %d args", dotted, argc);
-    (*e)->CallStaticVoidMethod(e, mc, mid, jargs);
-    if ((*e)->ExceptionCheck(e)) {
-        dump_exception(e, "main");
-        return -25;
+    pthread_mutex_lock(&job.lock);
+    while (!job.done) {
+        pthread_cond_wait(&job.cond, &job.lock);
     }
-    LOGI("main returned normally");
-    return 0;
+    pthread_mutex_unlock(&job.lock);
+
+    jintArray result = (*env)->NewIntArray(env, 2);
+    jint vals[2];
+    vals[0] = job.vmRc;
+    vals[1] = job.mainRc;
+    (*env)->SetIntArrayRegion(env, result, 0, 2, vals);
+    return result;
 }

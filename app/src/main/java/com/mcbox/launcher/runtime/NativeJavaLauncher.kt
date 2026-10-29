@@ -112,7 +112,7 @@ object NativeJavaLauncher {
                     el.jsonPrimitive.contentOrNull
                 }.getOrNull()
             }
-            ?.filterNot { it.contains("\${") }
+            ?.filterNot { it.contains("${") }
             ?.forEach { args += it }
 
         onLog("[launcher] java = ${execJava.absolutePath}")
@@ -267,41 +267,27 @@ object NativeJavaLauncher {
             }
         }
 
-        onLog("[launcher] creating JVM, options=${jvmOptions.size}")
-        var vmRc = -999
-        try {
-            vmRc = JvmBridge.nativeCreateVm(libjvm.absolutePath, jvmOptions.toTypedArray())
-        } catch (t: Throwable) {
-            var c: Throwable? = t
-            while (c?.cause != null) c = c.cause
-            onLog("[launcher] nativeCreateVm threw: ${t.javaClass.simpleName}: ${t.message}")
-            onLog("[launcher] root cause: ${c?.javaClass?.name}: ${c?.message}")
-            c?.stackTrace?.take(8)?.forEach { onLog("[launcher]   at $it") }
-        }
-        onLog("[launcher] JNI_CreateJavaVM rc=$vmRc")
-        if (vmRc != 0) return Result(vmRc, "JNI_CreateJavaVM failed: $vmRc")
-
-        // 游戏参数：直接用前面构建好的 args（已含 username/uuid/assets 等真实值），
-        // 只剔除 JVM 选项，保留 main 之后的游戏参数。
-        val mainIdx = args.indexOf(version.mainClass)
-        val gameArgs = if (mainIdx >= 0) ArrayList(args.drop(mainIdx + 1)) else ArrayList()
-
-        onLog("[launcher] calling ${version.mainClass}.main, gameArgs=${gameArgs.size}")
-        val mainRc = try {
-            JvmBridge.nativeCallMain(
+        onLog("[launcher] creating JVM (dedicated thread), options=${jvmOptions.size}")
+        val gameArgs2 = ArrayList(args.drop(args.indexOf(version.mainClass) + 1))
+        val rcs = try {
+            JvmBridge.nativeLaunch(
+                libjvm.absolutePath,
+                jvmOptions.toTypedArray(),
                 version.mainClass,
-                gameArgs.toTypedArray(),
+                gameArgs2.toTypedArray(),
                 classpath.map { it.absolutePath }.toTypedArray()
             )
         } catch (t: Throwable) {
             var c: Throwable? = t
             while (c?.cause != null) c = c.cause
-            onLog("[launcher] nativeCallMain threw: ${t.javaClass.simpleName}: ${t.message}")
+            onLog("[launcher] nativeLaunch threw: ${t.javaClass.simpleName}: ${t.message}")
             onLog("[launcher] root cause: ${c?.javaClass?.name}: ${c?.message}")
             c?.stackTrace?.take(10)?.forEach { onLog("[launcher]   at $it") }
-            -1
+            null
         }
-        onLog("[launcher] main returned $mainRc")
+        val vmRc = rcs?.getOrNull(0) ?: -999
+        val mainRc = rcs?.getOrNull(1) ?: -998
+        onLog("[launcher] JNI_CreateJavaVM rc=$vmRc, main rc=$mainRc")
         return Result(mainRc, "")
 
     }

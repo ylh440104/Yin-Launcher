@@ -1,27 +1,32 @@
 package com.mcbox.launcher.runtime
 
 /**
- * 进程内 JVM 创建桥。
+ * 进程内 JVM 启动桥。
  *
  * 为什么不用 JLI_Launch：libjli 的 JLI_Launch 会 execve(<java.home>/bin/java)，
- * 而 Android 的 untrusted_app 域禁止 execve app_data_file（error=13），
- * 无论把 java 放哪里都会失败。
+ * 而 Android 的 untrusted_app 域禁止 execve app_data_file（error=13）。
  *
- * 这里直接 dlopen(libjvm.so) + JNI_CreateJavaVM，全程不 exec，
- * 然后通过 JNI 调 mainClass.main(String[])。
+ * 这里直接 dlopen(libjvm.so) + JNI_CreateJavaVM，并用 URLClassLoader 加载
+ * classpath（纯 JNI 创建 VM 不认 -cp），全程不 exec。
+ *
+ * 整个流程跑在 native 侧新建的专用线程上：CreateJavaVM 和 main 必须同线程，
+ * 放在 ART 工作线程上会导致 libjvm 内部空指针崩溃。
  */
 object JvmBridge {
     init {
         System.loadLibrary("jvm_bridge")
     }
 
-    /** @return 0 成功；负数为错误码 */
-    external fun nativeCreateVm(libjvmPath: String, jvmOptions: Array<String>): Int
-
-    /** @return 0 成功；负数为错误码 */
-    external fun nativeCallMain(
+    /**
+     * 一次性完成建 VM 并调用 main。
+     *
+     * @return intArrayOf(vmRc, mainRc)，0 表示成功
+     */
+    external fun nativeLaunch(
+        libjvmPath: String,
+        jvmOptions: Array<String>,
         mainClassName: String,
         mainArgs: Array<String>,
         classpath: Array<String>
-    ): Int
+    ): IntArray?
 }
