@@ -1,5 +1,6 @@
 #include <jni.h>
 #include <dlfcn.h>
+#include <unistd.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -132,6 +133,18 @@ static void dump_exception(JNIEnv *e, const char *where) {
  * 之前把两者放在 ART 的工作线程上，JVM 内部线程对象没建立，
  * KnotClient 一执行就在 libjvm 里空指针崩溃（SIGSEGV 0x24）。
  */
+// chdir 只能在 native 做：Kotlin 侧 android.system.Os 没有公开 chdir。
+// Fabric 用相对路径 ".fabric/remappedJars/..." 打开输出文件，cwd 必须是游戏根目录。
+JNIEXPORT jint JNICALL
+Java_com_mcbox_launcher_runtime_JvmBridge_nativeChdir(JNIEnv *env, jclass clazz, jstring path) {
+    const char *p = (*env)->GetStringUTFChars(env, path, NULL);
+    if (!p) return -1;
+    int rc = chdir(p);
+    LOGI("nativeChdir(%s) = %d", p, rc);
+    (*env)->ReleaseStringUTFChars(env, path, p);
+    return rc;
+}
+
 static void *launch_thread(void *arg) {
     LaunchJob *job = (LaunchJob *) arg;
 

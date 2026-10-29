@@ -144,10 +144,10 @@ object NativeJavaLauncher {
         // 不能用 JREUtils.chdir（它 <clinit> 会 loadLibrary 然后 abort 进程），
         // 这里直接用 android.system.Os。
         try {
-            android.system.Os.chdir(paths.root.absolutePath)
-            onLog("[launcher] chdir -> ${paths.root.absolutePath} (real)")
+            val crc = JvmBridge.nativeChdir(paths.root.absolutePath)
+            onLog("[launcher] chdir -> ${paths.root.absolutePath} rc=$crc")
         } catch (t: Throwable) {
-            onLog("[launcher] chdir failed: ${t.message}")
+            onLog("[launcher] chdir failed: ${t.javaClass.simpleName}: ${t.message}")
         }
 
         val jvmOptions = ArrayList<String>()

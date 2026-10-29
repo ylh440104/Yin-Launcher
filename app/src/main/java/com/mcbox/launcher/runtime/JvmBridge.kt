@@ -22,6 +22,9 @@ object JvmBridge {
      *
      * @return intArrayOf(vmRc, mainRc)，0 表示成功
      */
+    /** chdir 到指定目录（native 实现，Os 没有公开 chdir） */
+    external fun nativeChdir(path: String): Int
+
     external fun nativeLaunch(
         libjvmPath: String,
         jvmOptions: Array<String>,
