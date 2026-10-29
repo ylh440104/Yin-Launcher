@@ -56,7 +56,10 @@ object NativeJavaLauncher {
         // 这里把系统库补进 JRE 的 lib 目录，让同一 namespace 内可以解析。
         ensureRuntimeLibs(libDir, onLog)
 
-        val classpath = buildClasspath(paths, version, versionId)
+        // Android 版 LWJGL（Pojav 构建，aarch64 + EGL 桥接）必须排在官方 lwjgl 之前，
+        // 否则会用 linux/x64 的 liblwjgl.so，在 arm64 设备上直接 UnsatisfiedLinkError。
+        val lwjglOverride = prepareLwjglOverride(context, paths, onLog)
+        val classpath = buildClasspath(paths, version, versionId, lwjglOverride)
         onLog("[launcher] classpath entries = ${classpath.size}")
 
         val nativesDir = paths.nativeDir(versionId)
@@ -158,6 +161,13 @@ object NativeJavaLauncher {
         jvmOptions += "-Djava.class.path=" + classpath.joinToString(":") { it.absolutePath }
         jvmOptions += "-Dsun.boot.library.path=${libDir.absolutePath}"
         jvmOptions += "-Djava.library.path=$libPath"
+        // LWJGL 在 Android 上从 nativeLibraryDir 找 so；org.lwjgl.librarypath 必须包含它
+        val nativeLibDir = context.applicationInfo.nativeLibraryDir
+        jvmOptions += "-Dorg.lwjgl.librarypath=$nativeLibDir"
+        // gl4es：OpenGL 2.x -> OpenGL ES 2/3 转译（Pojav 的默认渲染后端）
+        jvmOptions += "-DLIBGL_ES=2"
+        jvmOptions += "-Dorg.lwjgl.opengl.libname=libgl4es_114.so"
+        onLog("[launcher] nativeLibDir = $nativeLibDir")
         jvmOptions += "-Xmx${memoryMb}M"
         // 不要限 -Xss：MethodHandle/MethodHandles.Lookup 在 fabric 里会深层调用，
         // 栈太小会触发 NoSuchMethodError(invokeVirtual/invokeSpecial) 链。
@@ -177,7 +187,9 @@ object NativeJavaLauncher {
             }
         }
         // JVM 自身日志写盘，排查崩溃不受 System.out 影响
-        jvmOptions += "-Xlog:all=info:file=${paths.root.absolutePath}/jvm-xlog.txt:time,level,tags"
+        // 只保留轻量诊断标签：all=info 会打开 verification/dependencies 等重量级日志，
+        // 在受限环境下频繁 deopt 会打乱 LambdaForm 自举（NoSuchMethodError 链）。
+        jvmOptions += "-Xlog:exceptions=info,class+load=info,os+thread=info:file=${paths.root.absolutePath}/jvm-xlog.txt:time,level,tags"
 
         onLog("[launcher] creating JVM (dedicated thread), options=${jvmOptions.size}")
         val gameArgs2 = ArrayList(args.drop(args.indexOf(version.mainClass) + 1))
@@ -223,13 +235,47 @@ object NativeJavaLauncher {
         return fallback
     }
 
+    /**
+     * 把 assets/lwjgl3/lwjgl-glfw-classes.jar（Pojav 的 Android 版 LWJGL）解压到
+     * 可读目录，供 classpath 使用。
+     *
+     * 官方 LWJGL 的 glfw 走 X11/GLX，Android 上没有；Pojav 的这份改成 EGL +
+     * 直接操控 Surface，且自带 aarch64 的 liblwjgl.so。
+     */
+    private fun prepareLwjglOverride(
+        context: Context,
+        paths: GamePaths,
+        onLog: (String) -> Unit
+    ): File? {
+        val out = File(paths.root, "lwjgl3/lwjgl-glfw-classes.jar")
+        return try {
+            out.parentFile?.mkdirs()
+            val need = !out.exists() || out.length() < 100_000L
+            if (need) {
+                context.assets.open("lwjgl3/lwjgl-glfw-classes.jar").use { input ->
+                    out.outputStream().use { input.copyTo(it) }
+                }
+                onLog("[launcher] 已解压 Android LWJGL -> ${out.absolutePath} (${out.length()} 字节)")
+            } else {
+                onLog("[launcher] Android LWJGL 已就绪 (${out.length()} 字节)")
+            }
+            out
+        } catch (t: Throwable) {
+            onLog("[launcher] 解压 Android LWJGL 失败: ${t.message}")
+            null
+        }
+    }
+
     /** 收集 classpath：libraries 目录中实际存在的 jar + 版本 jar。 */
     private fun buildClasspath(
         paths: GamePaths,
         version: VersionJson,
-        versionId: String
+        versionId: String,
+        lwjglOverride: File?
     ): List<File> {
         val result = LinkedHashSet<File>()
+        // Android 版 LWJGL 优先
+        if (lwjglOverride != null && lwjglOverride.exists()) result += lwjglOverride
 
         // 1) 版本主 jar
         val versionJar = paths.versionJar(versionId)
@@ -246,6 +292,8 @@ object NativeJavaLauncher {
                 .filter { it.isFile && it.name.endsWith(".jar") }
                 // 排除 natives 分类构件，它们应解压到 natives 目录
                 .filterNot { it.name.contains("-natives-") }
+                // 官方 lwjgl jar 全部剔除：Android 版已提供同名类
+                .filterNot { it.absolutePath.contains("/org/lwjgl/") }
                 .forEach { result += it }
         }
 
