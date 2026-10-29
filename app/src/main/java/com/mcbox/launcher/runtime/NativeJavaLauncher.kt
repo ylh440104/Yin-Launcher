@@ -141,17 +141,60 @@ object NativeJavaLauncher {
         } catch (t: Throwable) {
             onLog("[launcher] setenv failed: ${t.message}")
         }
+        // 走 libpojavexec.so 里的 VMLauncher.launchJVM：
+        //   jre_launcher.c: dlopen(libjli.so) -> dlsym("JLI_Launch") -> 调用
+        // 这是 Pojav 原版真正使用的入口，也是绕开 SELinux exec 限制的正解。
+        // 先把 libjli.so 载入进程（libjavaexec.so 依赖它，同目录已打包）。
+        try {
+            System.loadLibrary("pojavexec")
+            onLog("[launcher] libpojavexec.so loaded")
+        } catch (t: Throwable) {
+            onLog("[launcher] loadLibrary pojavexec failed: ${t.message}")
+        }
+        val nativeDir = context.applicationInfo.nativeLibraryDir
+
+        // 关键：JLI_Launch 之前必须把 JRE 的核心 so 都载入进程（libjli 的 JLI_Launch
+        // 会在已加载的库中查找 libjvm）。Pojav 的 initJavaRuntime 做的就是这件事。
+        val needLibs = ArrayList<String>()
+        needLibs += File(nativeDir, "libjli.so").absolutePath
+        for (n in listOf("libjava.so", "libverify.so", "libnet.so", "libnio.so",
+                         "libzip.so", "libjimage.so", "libjvm.so")) {
+            val f = File(libDir, n)
+            if (f.exists()) needLibs += f.absolutePath
+        }
+        val serverJvm = File(serverDir, "libjvm.so")
+        if (serverJvm.exists()) needLibs += serverJvm.absolutePath
+
+        val dlopen = jreUtils.getMethod("dlopen", String::class.java)
+        for (p in needLibs) {
+            try {
+                val ok = dlopen.invoke(null, p) as Boolean
+                onLog("[launcher] dlopen ${File(p).name} = $ok")
+            } catch (t: Throwable) {
+                onLog("[launcher] dlopen ${File(p).name} threw: ${t.message}")
+            }
+        }
+
+        val vmArgs = ArrayList<String>(argv.size + 2)
+        vmArgs += "java"                 // argv[0] 按 C 标准是程序名
+        vmArgs += "-Djava.home=${execHome.absolutePath}"
+        vmArgs += args.drop(1)
+
+        onLog("[launcher] calling VMLauncher.launchJVM, args=${vmArgs.size}")
+
         val exit = try {
-            jreUtils.getMethod("executeBinary", Array<String>::class.java)
-                .invoke(null, argv.toTypedArray()) as Int
+            val vm = Class.forName("com.oracle.dalvik.VMLauncher")
+            vm.getMethod("launchJVM", Array<String>::class.java)
+                .invoke(null, vmArgs.toTypedArray()) as Int
         } catch (t: Throwable) {
             var cause: Throwable? = t
             while (cause?.cause != null) cause = cause.cause
-            onLog("[launcher] executeBinary threw: ${t.javaClass.simpleName}: ${t.message}")
+            onLog("[launcher] launchJVM threw: ${t.javaClass.simpleName}: ${t.message}")
             onLog("[launcher] root cause: ${cause?.javaClass?.name}: ${cause?.message}")
             cause?.stackTrace?.take(8)?.forEach { onLog("[launcher]   at $it") }
             -1
         }
+        onLog("[launcher] JVM exited with $exit")
         return Result(exit, "")
     }
 
