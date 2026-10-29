@@ -119,6 +119,9 @@ object NativeJavaLauncher {
 
         // 版本自带的 game 参数（新版 arguments.game 是混合数组：字符串 + 带 rules 的对象）。
         // 只取纯字符串项，并跳过 ${...} 占位符（已由上面的显式参数覆盖）。
+        // 只补“纯值”参数（例如 --demo 的裸值），不补选项名：选项和取值已在上面显式给出，
+        // 再混入一份会造成 joptsimple 重复解析（如 versionType 后被当成另一个选项），
+        // 表现为 OptionMissingRequiredArgumentException。
         version.arguments?.game
             ?.mapNotNull { el ->
                 runCatching {
@@ -126,6 +129,7 @@ object NativeJavaLauncher {
                 }.getOrNull()
             }
             ?.filterNot { it.contains("$" + "{") }
+            ?.filterNot { it.startsWith("--") }
             ?.forEach { args += it }
 
         onLog("[launcher] java = ${execJava.absolutePath}")
@@ -241,6 +245,7 @@ object NativeJavaLauncher {
 
         onLog("[launcher] creating JVM (dedicated thread), options=${jvmOptions.size}")
         val gameArgs2 = ArrayList(args.drop(args.indexOf(version.mainClass) + 1))
+        onLog("[launcher] gameArgs (${gameArgs2.size}): ${gameArgs2.joinToString(" ")}")
         val rcs = try {
             JvmBridge.nativeLaunch(
                 libjvm.absolutePath,
