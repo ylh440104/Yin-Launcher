@@ -219,10 +219,14 @@ object NativeJavaLauncher {
             onLog("[launcher] dup2 failed: ${t.message}")
         }
 
-        // 关键：cwd 必须是游戏目录，绝不能是 JRE 根。
-        // 若 cwd 指向 JRE 根，JLI_Launch 会在那里找到 bin/java 并 exec 它，
-        // SELinux 拒绝 app 目录 exec -> "Error: trying to exec .../bin/java" 后 exit()。
-        // cwd 在别处时，JLI_Launch 转为进程内加载 libjvm.so（Pojav 的做法）。
+        // 不再用 JLI_Launch：它内部必定 execve(<java.home>/bin/java)，
+        // 而 untrusted_app 域禁止 exec app_data_dir（error=13）。
+        // 改为 dlopen(libjvm.so) + JNI_CreateJavaVM，全程无 exec。
+        val libjvm = File(serverDir, "libjvm.so")
+        require(libjvm.exists()) { "libjvm.so 不存在: ${libjvm.absolutePath}" }
+        onLog("[launcher] libjvm = ${libjvm.absolutePath}")
+
+        // 工作目录必须在游戏目录（JVM 与 MC 都按 cwd 解析相对路径）
         try {
             val rc = jreUtils.getMethod("chdir", String::class.java)
                 .invoke(null, paths.root.absolutePath) as Int
@@ -231,22 +235,60 @@ object NativeJavaLauncher {
             onLog("[launcher] chdir failed: ${t.message}")
         }
 
-        onLog("[launcher] calling VMLauncher.launchJVM, args=${vmArgs.size}")
+        // -Djava.home 让 JVM 找到 modules/legal；-Djava.class.path 即玩家 classpath。
+        val jvmOptions = ArrayList<String>()
+        jvmOptions += "-Djava.home=${execHome.absolutePath}"
+        jvmOptions += "-Djava.class.path=" + classpath.joinToString(":") { it.absolutePath }
+        jvmOptions += "-Dsun.boot.library.path=${libDir.absolutePath}"
+        jvmOptions += "-Djava.library.path=$libPath"
+        jvmOptions += "-Xmx${memoryMb}M"
+        jvmOptions += "-Xss1m"
+        jvmOptions += "-Dfile.encoding=UTF-8"
+        jvmOptions += "-Duser.home=${paths.root.absolutePath}"
+        jvmOptions += "-Duser.dir=${paths.root.absolutePath}"
+        jvmOptions += "-Dstdout.encoding=UTF-8"
+        jvmOptions += "-Dstderr.encoding=UTF-8"
+        // 版本 json 里的 jvm 参数原样带上（Fabric 的 -DFabricMcEmu 等）
+        for (a in args.drop(1)) {
+            if (a.startsWith("-D") || a.startsWith("-X") || a.startsWith("-XX:")) {
+                if (a.startsWith("-Djava.class.path")) continue
+                jvmOptions += a
+            }
+        }
 
-        val exit = try {
-            val vm = Class.forName("com.oracle.dalvik.VMLauncher")
-            vm.getMethod("launchJVM", Array<String>::class.java)
-                .invoke(null, vmArgs.toTypedArray()) as Int
+        onLog("[launcher] creating JVM, options=${jvmOptions.size}")
+        var vmRc = -999
+        try {
+            vmRc = JvmBridge.nativeCreateVm(libjvm.absolutePath, jvmOptions.toTypedArray())
         } catch (t: Throwable) {
-            var cause: Throwable? = t
-            while (cause?.cause != null) cause = cause.cause
-            onLog("[launcher] launchJVM threw: ${t.javaClass.simpleName}: ${t.message}")
-            onLog("[launcher] root cause: ${cause?.javaClass?.name}: ${cause?.message}")
-            cause?.stackTrace?.take(8)?.forEach { onLog("[launcher]   at $it") }
+            var c: Throwable? = t
+            while (c?.cause != null) c = c.cause
+            onLog("[launcher] nativeCreateVm threw: ${t.javaClass.simpleName}: ${t.message}")
+            onLog("[launcher] root cause: ${c?.javaClass?.name}: ${c?.message}")
+            c?.stackTrace?.take(8)?.forEach { onLog("[launcher]   at $it") }
+        }
+        onLog("[launcher] JNI_CreateJavaVM rc=$vmRc")
+        if (vmRc != 0) return Result(vmRc, "JNI_CreateJavaVM failed: $vmRc")
+
+        // 游戏参数：直接用前面构建好的 args（已含 username/uuid/assets 等真实值），
+        // 只剔除 JVM 选项，保留 main 之后的游戏参数。
+        val mainIdx = args.indexOf(version.mainClass)
+        val gameArgs = if (mainIdx >= 0) ArrayList(args.drop(mainIdx + 1)) else ArrayList()
+
+        onLog("[launcher] calling ${version.mainClass}.main, gameArgs=${gameArgs.size}")
+        val mainRc = try {
+            JvmBridge.nativeCallMain(version.mainClass, gameArgs.toTypedArray())
+        } catch (t: Throwable) {
+            var c: Throwable? = t
+            while (c?.cause != null) c = c.cause
+            onLog("[launcher] nativeCallMain threw: ${t.javaClass.simpleName}: ${t.message}")
+            onLog("[launcher] root cause: ${c?.javaClass?.name}: ${c?.message}")
+            c?.stackTrace?.take(10)?.forEach { onLog("[launcher]   at $it") }
             -1
         }
-        onLog("[launcher] JVM exited with $exit")
-        return Result(exit, "")
+        onLog("[launcher] main returned $mainRc")
+        return Result(mainRc, "")
+
     }
 
     /**

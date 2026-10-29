@@ -58,6 +58,21 @@ android {
         jvmTarget = "17"
     }
 
+    externalNativeBuild {
+        cmake {
+            path = file("src/main/cpp/CMakeLists.txt")
+            version = "3.22.1"
+        }
+    }
+    defaultConfig {
+        externalNativeBuild {
+            cmake {
+                abiFilters("arm64-v8a")
+            }
+        }
+    }
+    ndkVersion = "26.1.10909125"
+
     buildFeatures {
         compose = true
         buildConfig = true
