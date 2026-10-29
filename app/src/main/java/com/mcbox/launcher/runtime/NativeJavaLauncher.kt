@@ -139,9 +139,16 @@ object NativeJavaLauncher {
         require(libjvm.exists()) { "libjvm.so 不存在: ${libjvm.absolutePath}" }
         onLog("[launcher] libjvm = ${libjvm.absolutePath}")
 
-        // 不用 JREUtils.chdir：它的静态初始化会 System.loadLibrary("pojavexec")，
-        // 失败则抛 ExceptionInInitializerError，再被 JNI 当成 pending exception
-        // 直接 abort。工作目录通过 -Duser.dir 指定即可。
+        // 必须真正 chdir 到游戏根目录：Fabric 用相对路径 ".fabric/remappedJars/..."
+        // 打开 remap 输出文件，cwd 不对就 FileNotFoundException。
+        // 不能用 JREUtils.chdir（它 <clinit> 会 loadLibrary 然后 abort 进程），
+        // 这里直接用 android.system.Os。
+        try {
+            android.system.Os.chdir(paths.root.absolutePath)
+            onLog("[launcher] chdir -> ${paths.root.absolutePath} (real)")
+        } catch (t: Throwable) {
+            onLog("[launcher] chdir failed: ${t.message}")
+        }
 
         val jvmOptions = ArrayList<String>()
         jvmOptions += "-Djava.home=${execHome.absolutePath}"
