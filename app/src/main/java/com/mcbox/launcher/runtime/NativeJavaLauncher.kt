@@ -225,6 +225,13 @@ object NativeJavaLauncher {
                 nativeLibDir + ":" + libDir.absolutePath + ":" + serverDir.absolutePath +
                         ":/system/lib64:/vendor/lib64", true)
             onLog("[launcher] env POJAV_NATIVEDIR = $nativeLibDir")
+            // pojavexec 的 dlsym_EGL() 优先读 POJAVEXEC_EGL 作为 libEGL 的加载路径。
+            // 不设时它 dlopen("libEGL.so") 走 classloader-namespace，那个 namespace
+            // 里没有我们预载的绝对路径版本，拿到的 handle 与 poiimavexec 内部
+            // 的符号表不一致，导致 eglGetProcAddress 系列指针为 NULL，
+            // 最终在 Render thread / launch thread 上跳 0。
+            android.system.Os.setenv("POJAVEXEC_EGL", "/system/lib64/libEGL.so", true)
+            onLog("[launcher] env POJAVEXEC_EGL = /system/lib64/libEGL.so")
         } catch (t: Throwable) {
             onLog("[launcher] setenv POJAV_* failed: ${t.message}")
         }
