@@ -112,112 +112,12 @@ object NativeJavaLauncher {
                     el.jsonPrimitive.contentOrNull
                 }.getOrNull()
             }
-            ?.filterNot { it.contains("${") }
+            ?.filterNot { it.contains("$" + "{") }
             ?.forEach { args += it }
 
         onLog("[launcher] java = ${execJava.absolutePath}")
         onLog("[launcher] main = ${version.mainClass}")
         onLog("[launcher] LD_LIBRARY_PATH = $libPath")
-
-        // 关键：Android 的 SELinux 禁止 execve app 目录里的任何文件（error=13），
-        // 但允许 dlopen 一个 shared object。libpojavexec.so 的 executeBinary()
-        // 会 dlopen(argv[0]) 再 dlsym("main") 后调用，等价于「进程内执行 java」。
-        // 因此这里不走 ProcessBuilder，而是调用该 native 入口。
-        val argv = ArrayList<String>(args.size)
-        argv += execJava.absolutePath // argv[0] = 要 dlopen 的 java 二进制
-        argv += args.drop(1)          // 其余 JVM/游戏参数原样传递
-
-        onLog("[launcher] invoking executeBinary, argv=${argv.size}")
-
-        // dlopen 走 linker namespace，必须先把 JRE 的 lib 目录塞进该 namespace，
-        // 否则 libjavaexec.so 依赖的 libjli.so 解析不到。
-        // Kotlin 与 Java 混编时无法直接引用 net.kdt.* 的静态方法，这里统一走反射。
-        val jreUtils = Class.forName("net.kdt.pojavlaunch.utils.JREUtils")
-        // 注意：不要调用 setLdLibraryPath。Pojav 的实现在 libdl.so 里 dlsym
-        // android_update_LD_LIBRARY_PATH 后无条件调用，Android 13 的 app
-        // namespace 拿不到该私有符号，会抛 UnsatisfiedLinkError。
-        // libjli.so 已随 APK 打进 nativeLibraryDir，与 libjavaexec.so 同目录，
-        // linker 按 SONAME 同目录解析即可，不需要改 LD_LIBRARY_PATH。
-        // 走 libpojavexec.so 里的 VMLauncher.launchJVM：
-        //   jre_launcher.c: dlopen(libjli.so) -> dlsym("JLI_Launch") -> 调用
-        // 这是 Pojav 原版真正使用的入口，也是绕开 SELinux exec 限制的正解。
-        // 先把 libjli.so 载入进程（libjavaexec.so 依赖它，同目录已打包）。
-        try {
-            System.loadLibrary("pojavexec")
-            onLog("[launcher] libpojavexec.so loaded")
-        } catch (t: Throwable) {
-            onLog("[launcher] loadLibrary pojavexec failed: ${t.message}")
-        }
-        val nativeDir = context.applicationInfo.nativeLibraryDir
-
-        // 关键：JLI_Launch 之前必须把 JRE 的核心 so 都载入进程（libjli 的 JLI_Launch
-        // 会在已加载的库中查找 libjvm）。Pojav 的 initJavaRuntime 做的就是这件事。
-        // 顺序至关重要：libjava/libzip/libnio 等都 DT_NEEDED libjvm.so，
-        // 而 libjvm.so 位于 lib/server/，不在 linker 的默认搜索路径里。
-        // 必须先把 libjvm.so 载入进程，后面那些才能解析成功。
-        val needLibs = ArrayList<String>()
-        needLibs += File(nativeDir, "libjli.so").absolutePath
-        val serverJvm = File(serverDir, "libjvm.so")
-        if (serverJvm.exists()) needLibs += serverJvm.absolutePath
-        for (n in listOf("libjava.so", "libverify.so", "libzip.so", "libnet.so",
-                         "libnio.so", "libjimage.so", "libjsig.so")) {
-            val f = File(libDir, n)
-            if (f.exists()) needLibs += f.absolutePath
-        }
-
-        val dlopen = jreUtils.getMethod("dlopen", String::class.java)
-        for (p in needLibs) {
-            try {
-                val ok = dlopen.invoke(null, p) as Boolean
-                onLog("[launcher] dlopen ${File(p).name} = $ok")
-            } catch (t: Throwable) {
-                onLog("[launcher] dlopen ${File(p).name} threw: ${t.message}")
-            }
-        }
-
-        val vmArgs = ArrayList<String>(argv.size + 2)
-        vmArgs += "java"                 // argv[0] 按 C 标准是程序名
-        vmArgs += "-Djava.home=${execHome.absolutePath}"
-        vmArgs += args.drop(1)
-
-        // JLI_Launch 依赖这些环境变量定位 JRE 与 native 库
-        val fullLdPath = libPath + ":" + libDir.absolutePath + ":" + serverDir.absolutePath +
-                ":" + nativeDir + ":/system/lib64:/vendor/lib64"
-        try {
-            Os.setenv("LD_LIBRARY_PATH", fullLdPath, true)
-            Os.setenv("JAVA_HOME", execHome.absolutePath, true)
-            Os.setenv("HOME", paths.root.absolutePath, true)
-            Os.setenv("TMPDIR", context.cacheDir.absolutePath, true)
-            onLog("[launcher] env set: JAVA_HOME=${execHome.absolutePath}")
-        } catch (t: Throwable) {
-            onLog("[launcher] setenv failed: ${t.message}")
-        }
-
-        // JLI_Launch 的输出走 native stdout/stderr，必须重定向到 logcat 的 jrelog
-        // 标签，否则 JVM 为什么退出完全看不到（Pojav 的既有机制）。
-        try {
-            jreUtils.getMethod("redirectAndPrintJRELog").invoke(null)
-            onLog("[launcher] JRE log redirect started")
-        } catch (t: Throwable) {
-            onLog("[launcher] redirectAndPrintJRELog failed: ${t.message}")
-        }
-
-        // 双保险：把 native 的 fd 1/2 直接 dup2 到文件，JVM 的一切输出都会落盘。
-        val consoleFile = File(paths.root, "jvm-console.txt")
-        try {
-            consoleFile.parentFile?.mkdirs()
-            val fd = ParcelFileDescriptor.open(
-                consoleFile,
-                ParcelFileDescriptor.MODE_CREATE or ParcelFileDescriptor.MODE_WRITE_ONLY or
-                        ParcelFileDescriptor.MODE_TRUNCATE
-            )
-            Os.dup2(fd.fileDescriptor, 1)
-            Os.dup2(fd.fileDescriptor, 2)
-            fd.close()
-            onLog("[launcher] stdout/stderr -> ${consoleFile.absolutePath}")
-        } catch (t: Throwable) {
-            onLog("[launcher] dup2 failed: ${t.message}")
-        }
 
         // 不再用 JLI_Launch：它内部必定 execve(<java.home>/bin/java)，
         // 而 untrusted_app 域禁止 exec app_data_dir（error=13）。
@@ -228,27 +128,21 @@ object NativeJavaLauncher {
 
         // 工作目录必须在游戏目录（JVM 与 MC 都按 cwd 解析相对路径）
         try {
-            val rc = jreUtils.getMethod("chdir", String::class.java)
+            val rc = Class.forName("net.kdt.pojavlaunch.utils.JREUtils")
+                .getMethod("chdir", String::class.java)
                 .invoke(null, paths.root.absolutePath) as Int
             onLog("[launcher] chdir ${paths.root.absolutePath} = $rc")
         } catch (t: Throwable) {
             onLog("[launcher] chdir failed: ${t.message}")
         }
 
-        // -Djava.home 让 JVM 找到 modules/legal；-Djava.class.path 即玩家 classpath。
         val jvmOptions = ArrayList<String>()
         jvmOptions += "-Djava.home=${execHome.absolutePath}"
-        // 走 JNI_CreateJavaVM 时没有 java launcher 代劳这些初始化，
-        // KnotClient / Minecraft 会读 sun.java.command、java.launcher.path 等，
-        // 缺失会在 libjvm 内部空指针崩溃（SIGSEGV fault addr 0x28）。
+        // 走 JNI_CreateJavaVM 时没有 java launcher 代劳这些初始化
         jvmOptions += "-Dsun.java.command=${version.mainClass}"
         jvmOptions += "-Djava.launcher.path=${execHome.absolutePath}/bin/java"
         jvmOptions += "-Dsun.java.launcher=SUN_STANDARD"
-        jvmOptions += "-Djava.awt.headless=false"
         jvmOptions += "-Dos.arch=aarch64"
-        jvmOptions += "-Dorg.lwjgl.util.Debug=true"
-        // JVM 自身日志直接写盘，排查 Crash 时不受 System.out 未初始化影响
-        jvmOptions += "-Xlog:all=info:file=${paths.root.absolutePath}/jvm-xlog.txt:time,level,tags"
         jvmOptions += "-Djava.class.path=" + classpath.joinToString(":") { it.absolutePath }
         jvmOptions += "-Dsun.boot.library.path=${libDir.absolutePath}"
         jvmOptions += "-Djava.library.path=$libPath"
@@ -259,13 +153,15 @@ object NativeJavaLauncher {
         jvmOptions += "-Duser.dir=${paths.root.absolutePath}"
         jvmOptions += "-Dstdout.encoding=UTF-8"
         jvmOptions += "-Dstderr.encoding=UTF-8"
-        // 版本 json 里的 jvm 参数原样带上（Fabric 的 -DFabricMcEmu 等）
+        // 版本 json 里的 JVM 参数（Fabric 的 -DFabricMcEmu 等）
         for (a in args.drop(1)) {
             if (a.startsWith("-D") || a.startsWith("-X") || a.startsWith("-XX:")) {
                 if (a.startsWith("-Djava.class.path")) continue
                 jvmOptions += a
             }
         }
+        // JVM 自身日志写盘，排查崩溃不受 System.out 影响
+        jvmOptions += "-Xlog:all=info:file=${paths.root.absolutePath}/jvm-xlog.txt:time,level,tags"
 
         onLog("[launcher] creating JVM (dedicated thread), options=${jvmOptions.size}")
         val gameArgs2 = ArrayList(args.drop(args.indexOf(version.mainClass) + 1))
