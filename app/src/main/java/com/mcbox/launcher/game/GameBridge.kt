@@ -99,7 +99,8 @@ object GameBridge {
 
                 activity.appendStatus("启动 JVM (子进程模式)")
                 exited.set(false)
-                val logFile = File(paths.logs, "game-${System.currentTimeMillis()}.log")
+                // 固定文件名：每次都覆盖，避免时间戳文件堆积后找不到最新一份
+                val logFile = File(paths.logs, "latest.log")
                 logFile.parentFile?.mkdirs()
                 val logWriter = logFile.bufferedWriter()
                 fun writeLog(line: String) {
