@@ -198,6 +198,23 @@ object NativeJavaLauncher {
         } catch (t: Throwable) {
             onLog("[launcher] jna lib copy failed: ${t.message}")
         }
+        // JNA 仍会从 jna-*.jar 里解压 com/sun/jna/linux-aarch64/libjnidispatch.so
+        // 到 jna.tmpdir 再 dlopen；那份是 glibc 构建，依赖 libc.so.6，Android 没有。
+        // 这里直接把 jar 内该条目替换成我们 jniLibs 的 Android 版（依赖 libc.so），
+        // 让 JNA 解压出来的就是能加载的库。
+        try {
+            val androidJna = File(nativeLibDir, "libjnidispatch.so")
+            if (androidJna.exists()) {
+                val jnaJars = File(paths.libraries).walkTopDown()
+                    .filter { it.isFile && it.name.startsWith("jna-") && it.name.endsWith(".jar") }
+                    .toList()
+                for (jarFile in jnaJars) {
+                    patchJnaJar(jarFile, androidJna, onLog)
+                }
+            }
+        } catch (t: Throwable) {
+            onLog("[launcher] jna jar patch failed: ${t.message}")
+        }
         // native 侧已用 System.load(绝对路径) 预载 libjnidispatch.so 并 RTLD_GLOBAL，
         // 所以这里不要让 JNA 去 boot.library.path 找（那样会走 System.load 失败路径），
         // 保持默认的 System.loadLibrary("jnidispatch") 命中已加载库。
@@ -350,6 +367,42 @@ object NativeJavaLauncher {
     }
 
     /** 收集 classpath：libraries 目录中实际存在的 jar + 版本 jar。 */
+    /**
+     * 把 jna-*.jar 里 com/sun/jna/linux-aarch64/libjnidispatch.so 换成 Android 版。
+     * JNA 的 Native.loadNativeDispatchLibrary() 会把这个条目解压到 jna.tmpdir 再
+     * dlopen；原版是 glibc 构建，依赖 libc.so.6，在 bionic 上必然失败：
+     *   dlopen failed: library "libc.so.6" not found
+     * 我们 jniLibs 里的那份依赖 libc.so，可以直接跑。
+     */
+    private fun patchJnaJar(jarFile: File, androidJna: File, onLog: (String) -> Unit) {
+        val entries = arrayOf(
+            "com/sun/jna/linux-aarch64/libjnidispatch.so",
+            "com/sun/jna/android-aarch64/libjnidispatch.so"
+        )
+        val payload = androidJna.readBytes()
+        val tmp = File(jarFile.parentFile, jarFile.name + ".patched")
+        java.util.zip.ZipFile(jarFile).use { zin ->
+            java.util.zip.ZipOutputStream(tmp.outputStream()).use { zout ->
+                for (e in zin.entries()) {
+                    if (entries.contains(e.name)) continue
+                    zout.putNextEntry(java.util.zip.ZipEntry(e.name))
+                    if (!e.isDirectory) zin.getInputStream(e).use { it.copyTo(zout) }
+                    zout.closeEntry()
+                }
+                for (name in entries) {
+                    zout.putNextEntry(java.util.zip.ZipEntry(name))
+                    zout.write(payload)
+                    zout.closeEntry()
+                }
+            }
+        }
+        if (tmp.length() > 0) {
+            tmp.copyTo(jarFile, overwrite = true)
+            tmp.delete()
+            onLog("[launcher] jna jar patched: ${jarFile.name} (${payload.size} bytes so)")
+        }
+    }
+
     private fun buildClasspath(
         paths: GamePaths,
         version: VersionJson,
