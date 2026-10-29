@@ -205,7 +205,7 @@ object NativeJavaLauncher {
         try {
             val androidJna = File(nativeLibDir, "libjnidispatch.so")
             if (androidJna.exists()) {
-                val jnaJars = File(paths.libraries).walkTopDown()
+                val jnaJars = paths.libraries.walkTopDown()
                     .filter { it.isFile && it.name.startsWith("jna-") && it.name.endsWith(".jar") }
                     .toList()
                 for (jarFile in jnaJars) {
