@@ -200,6 +200,9 @@ object NativeJavaLauncher {
         // 不要限 -Xss：MethodHandle/MethodHandles.Lookup 在 fabric 里会深层调用，
         // 栈太小会触发 NoSuchMethodError(invokeVirtual/invokeSpecial) 链。
         jvmOptions += "-XX:+UseSerialGC"
+        // 这个 Android 版 JRE 的 JIT 会在 VM Thread 上触发 tagged-pointer abort
+        // （logcat: Pointer tag ... was truncated）。实测 -Xint 可稳定通过，先关 JIT。
+        jvmOptions += "-Xint"
         // 受限环境下 JIT 生成的方法句柄调用点可能解析失败（NoSuchMethodError
         // invokeVirtual/invokeSpecial 链），先只跑 C1 保证正确性。
         jvmOptions += "-Dfile.encoding=UTF-8"
