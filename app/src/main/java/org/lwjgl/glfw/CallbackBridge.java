@@ -217,7 +217,10 @@ public class CallbackBridge {
     }
 
     public static FloatBuffer createGamepadAxisBuffer() {
-        ByteBuffer axisByteBuffer = nativeCreateGamepadAxisBuffer();
+        // 原实现是 nativeCreateGamepadAxisBuffer()，但预编译的 libpojavexec.so
+        // 里没有这个符号（Java 源码比 .so 新）。这里用纯 Java 的 direct buffer，
+        // 语义等价（手柄轴数据容器），且不依赖 native。
+        ByteBuffer axisByteBuffer = ByteBuffer.allocateDirect(4 * 8).order(ByteOrder.nativeOrder());
         // NOTE: hardcoded order (also in jre_lwjgl3glfw CallbackBridge)
         return axisByteBuffer.order(ByteOrder.LITTLE_ENDIAN).asFloatBuffer();
     }
@@ -238,11 +241,10 @@ public class CallbackBridge {
     @Keep @CriticalNative private static native void nativeSendScroll(double xoffset, double yoffset);
     @Keep @CriticalNative private static native void nativeSendScreenSize(int width, int height);
     public static native void nativeSetWindowAttrib(int attrib, int value);
-    private static native ByteBuffer nativeCreateGamepadButtonBuffer();
-    private static native ByteBuffer nativeCreateGamepadAxisBuffer();
     static {
         System.loadLibrary("pojavexec");
-        sGamepadButtonBuffer = nativeCreateGamepadButtonBuffer();
+        // 同理：libpojavexec.so 无此符号，改用纯 Java direct buffer
+        sGamepadButtonBuffer = ByteBuffer.allocateDirect(16 * 4).order(ByteOrder.nativeOrder());
         sGamepadAxisBuffer = createGamepadAxisBuffer();
     }
 }
