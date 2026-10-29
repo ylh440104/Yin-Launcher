@@ -98,6 +98,26 @@ class VersionInstaller(
         return jsonFile
     }
 
+    /**
+     * 从本地已存在的 version.json 补齐缺失的 libraries。
+     *
+     * 用于：用户之前安装的版本（尤其 fabric/forge）只写入了 json、库没下全，
+     * 启动前自动把缺的构件补上，避免 ClassNotFoundException。
+     */
+    fun repairLibrariesFromLocalJson(versionId: String, listener: ProgressListener): Boolean {
+        val jsonFile = paths.versionJson(versionId)
+        if (!jsonFile.exists()) return false
+        return try {
+            val version = JsonCompact.decodeFromString(VersionJson.serializer(), jsonFile.readText())
+            listener.onLog("repair libraries for $versionId")
+            downloadLibraries(version, listener)
+            true
+        } catch (t: Throwable) {
+            listener.onLog("repair libraries failed: ${t.message}")
+            false
+        }
+    }
+
     fun downloadLibraries(version: VersionJson, listener: ProgressListener) {
         val libs = version.libraries.filter { RuleEvaluator.isAllowed(it.rules, platform) }
         val tasks = mutableListOf<Triple<String, File, String?>>()
@@ -112,10 +132,19 @@ class VersionInstaller(
                 }
                 continue
             }
-            val artifact = lib.downloads?.artifact ?: continue
-            if (artifact.url.isEmpty()) continue
-            val rel = artifact.path.ifEmpty { lib.mavenPath() }
-            tasks.add(Triple(artifact.url, paths.libraryPath(rel), artifact.sha1))
+            val artifact = lib.downloads?.artifact
+            // fabric/forge 等 loader 的 version.json 常只给 maven 根 url，没有 downloads 段，
+            // 这类必须按 maven 布局自己拼出构件地址，否则整批库都会被跳过。
+            if (artifact != null && artifact.url.isNotEmpty()) {
+                val rel = artifact.path.ifEmpty { lib.mavenPath() }
+                tasks.add(Triple(artifact.url, paths.libraryPath(rel), artifact.sha1))
+            } else {
+                val base = lib.url ?: continue
+                if (base.isEmpty()) continue
+                val rel = lib.mavenPath()
+                val fixed = if (base.endsWith("/")) base else "$base/"
+                tasks.add(Triple(fixed + rel, paths.libraryPath(rel), null))
+            }
         }
         runDownloadBatch("libraries", tasks, listener)
     }

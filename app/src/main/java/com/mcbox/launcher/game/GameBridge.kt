@@ -111,6 +111,20 @@ object GameBridge {
                     android.util.Log.i("JavaOut", line)
                     activity.runOnUiThread { activity.appendStatus(line.take(120)) }
                 }
+                // 启动前补齐 loader 缺失的库（fabric/forge 的 json 常只写库、不下构件）
+                try {
+                    val installer = com.mcbox.core.install.VersionInstaller(paths)
+                    val listener = object : com.mcbox.core.install.ProgressListener {
+                        override fun onProgress(progress: com.mcbox.core.install.InstallProgress) {}
+                        override fun onLog(line: String) {
+                            writeLog("[repair] " + line)
+                        }
+                    }
+                    installer.repairLibrariesFromLocalJson(instance.versionId, listener)
+                } catch (t: Throwable) {
+                    writeLog("[repair] skipped: " + t.message)
+                }
+
                 val result = try {
                     NativeJavaLauncher.launch(
                         context = activity.applicationContext,
