@@ -238,6 +238,17 @@ object NativeJavaLauncher {
         // -Djava.home 让 JVM 找到 modules/legal；-Djava.class.path 即玩家 classpath。
         val jvmOptions = ArrayList<String>()
         jvmOptions += "-Djava.home=${execHome.absolutePath}"
+        // 走 JNI_CreateJavaVM 时没有 java launcher 代劳这些初始化，
+        // KnotClient / Minecraft 会读 sun.java.command、java.launcher.path 等，
+        // 缺失会在 libjvm 内部空指针崩溃（SIGSEGV fault addr 0x28）。
+        jvmOptions += "-Dsun.java.command=${version.mainClass}"
+        jvmOptions += "-Djava.launcher.path=${execHome.absolutePath}/bin/java"
+        jvmOptions += "-Dsun.java.launcher=SUN_STANDARD"
+        jvmOptions += "-Djava.awt.headless=false"
+        jvmOptions += "-Dos.arch=aarch64"
+        jvmOptions += "-Dorg.lwjgl.util.Debug=true"
+        // JVM 自身日志直接写盘，排查 Crash 时不受 System.out 未初始化影响
+        jvmOptions += "-Xlog:all=info:file=${paths.root.absolutePath}/jvm-xlog.txt:time,level,tags"
         jvmOptions += "-Djava.class.path=" + classpath.joinToString(":") { it.absolutePath }
         jvmOptions += "-Dsun.boot.library.path=${libDir.absolutePath}"
         jvmOptions += "-Djava.library.path=$libPath"
