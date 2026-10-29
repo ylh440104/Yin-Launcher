@@ -63,7 +63,11 @@ object NativeJavaLauncher {
         onLog("[launcher] classpath entries = ${classpath.size}")
 
         val nativesDir = paths.nativeDir(versionId)
+        // nativeLibraryDir 必须排第一：LWJGL/gl4es/openal 这些 Android 版 so 都在这里，
+        // 且它是唯一被允许 dlopen 的 app 目录（apk_data_file 标签）。
+        val nativeLibDirPath = context.applicationInfo.nativeLibraryDir
         val libPath = listOf(
+            nativeLibDirPath,
             nativesDir.absolutePath,
             libDir.absolutePath,
             serverDir.absolutePath,
@@ -162,12 +166,28 @@ object NativeJavaLauncher {
         jvmOptions += "-Dsun.boot.library.path=${libDir.absolutePath}"
         jvmOptions += "-Djava.library.path=$libPath"
         // LWJGL 在 Android 上从 nativeLibraryDir 找 so；org.lwjgl.librarypath 必须包含它
-        val nativeLibDir = context.applicationInfo.nativeLibraryDir
+        val nativeLibDir = nativeLibDirPath
         jvmOptions += "-Dorg.lwjgl.librarypath=$nativeLibDir"
         // gl4es：OpenGL 2.x -> OpenGL ES 2/3 转译（Pojav 的默认渲染后端）
         jvmOptions += "-DLIBGL_ES=2"
         jvmOptions += "-Dorg.lwjgl.opengl.libname=libgl4es_114.so"
         onLog("[launcher] nativeLibDir = $nativeLibDir")
+
+        // Pojav 的 Android 版 LWJGL 从环境变量 POJAV_NATIVEDIR 找 so，
+        // 不是 org.lwjgl.librarypath。缺失时 GLFW.<clinit> 直接 UnsatisfiedLinkError。
+        try {
+            Os.setenv("POJAV_NATIVEDIR", nativeLibDir, true)
+            Os.setenv("POJAV_RENDERER", "opengles", true)
+            Os.setenv("POJAV_LOAD_TURNIP", "0", true)
+            Os.setenv("LIBGL_ES", "2", true)
+            Os.setenv("LIBGL_MIPMAP", "3", true)
+            Os.setenv("LD_LIBRARY_PATH",
+                nativeLibDir + ":" + libDir.absolutePath + ":" + serverDir.absolutePath +
+                        ":/system/lib64:/vendor/lib64", true)
+            onLog("[launcher] env POJAV_NATIVEDIR = $nativeLibDir")
+        } catch (t: Throwable) {
+            onLog("[launcher] setenv POJAV_* failed: ${t.message}")
+        }
         jvmOptions += "-Xmx${memoryMb}M"
         // 不要限 -Xss：MethodHandle/MethodHandles.Lookup 在 fabric 里会深层调用，
         // 栈太小会触发 NoSuchMethodError(invokeVirtual/invokeSpecial) 链。
