@@ -172,6 +172,12 @@ object NativeJavaLauncher {
         jvmOptions += "-DLIBGL_ES=2"
         jvmOptions += "-Dorg.lwjgl.opengl.libname=libgl4es_114.so"
         onLog("[launcher] nativeLibDir = $nativeLibDir")
+        // JNA / 各类库需要可写临时目录；Android 没有 /tmp，必须显式指定。
+        val tmpDir = File(paths.root, "temp").apply { mkdirs() }
+        jvmOptions += "-Djna.tmpdir=${tmpDir.absolutePath}"
+        jvmOptions += "-Djava.io.tmpdir=${tmpDir.absolutePath}"
+        jvmOptions += "-Djava.awt.headless=false"
+        onLog("[launcher] tmpDir = ${tmpDir.absolutePath}")
 
         // Pojav 的 Android 版 LWJGL 从环境变量 POJAV_NATIVEDIR 找 so，
         // 不是 org.lwjgl.librarypath。缺失时 GLFW.<clinit> 直接 UnsatisfiedLinkError。

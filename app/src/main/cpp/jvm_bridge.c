@@ -133,6 +133,20 @@ static void *launch_thread(void *arg) {
         opts[i].extraInfo = NULL;
     }
 
+    /* LWJGL 的 CallbackBridge.nativeSetUseInputStackQueue 实现在 libpojavexec.so 里，
+     * 必须先以 RTLD_GLOBAL 载入，符号才对 System.loadLibrary("lwjgl") 可见。 */
+    const char *extraLibs[] = {"libpojavexec.so", "liblwjgl.so", "liblwjgl_opengl.so",
+                               "liblwjgl_stb.so", "liblwjgl_tinyfd.so", "libopenal.so",
+                               "libfreetype.so", "libgl4es_114.so"};
+    for (int i = 0; i < 8; i++) {
+        void *h = dlopen(extraLibs[i], RTLD_NOW | RTLD_GLOBAL);
+        if (h == NULL) {
+            LOGE("preload %s failed: %s", extraLibs[i], dlerror());
+        } else {
+            LOGI("preload %s ok", extraLibs[i]);
+        }
+    }
+
     JavaVMInitArgs vargs;
     vargs.version = JNI_VERSION_1_6;
     vargs.nOptions = job->optionCount;
