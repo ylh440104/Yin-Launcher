@@ -181,15 +181,27 @@ object NativeJavaLauncher {
         jvmOptions += "-Dorg.lwjgl.librarypath=$nativeLibDir"
         // JNA 只认这个属性找 libjnidispatch.so；不指定会去 jar 里解压 glibc 版而失败
         // JNA：jna-5.17.0.jar 里只带 glibc 版 linux-aarch64/libjnidispatch.so
-        // （依赖 libc.so.6，Android bionic 没有），JNA 默认解压它到 tmp 再 dlopen
-        // 必然失败。jniLibs 里那份是 Android 版（依赖 libc.so）。
-        // nosys=false 允许 JNA 用 System.loadLibrary("jnidispatch")，Android 会从
-        // nativeLibraryDir 解析到我们打包的那份；nounpack=true 阻止它解压 jar。
-        jvmOptions += "-Djna.nosys=false"
+        // （依赖 libc.so.6，Android bionic 没有），JNA 默认把它解压到 tmp 再 dlopen
+        // 必然失败（"library libc.so.6 not found"）。
+        // jniLibs 里那份是 Android 版（依赖 libc.so，6.1.6）。
+        // 做法：把它复制到游戏根目录下的 jna/ 目录，让 JNA 从那里加载。
+        val jnaDir = File(paths.root, "jna").apply { mkdirs() }
+        try {
+            val src = File(nativeLibDir, "libjnidispatch.so")
+            val dst = File(jnaDir, "libjnidispatch.so")
+            if (src.exists()) {
+                src.copyTo(dst, overwrite = true)
+                onLog("[launcher] jna lib copied -> ${dst.absolutePath} (${dst.length()} bytes)")
+            } else {
+                onLog("[launcher] jna lib MISSING in $nativeLibDir")
+            }
+        } catch (t: Throwable) {
+            onLog("[launcher] jna lib copy failed: ${t.message}")
+        }
+        jvmOptions += "-Djna.boot.library.path=${jnaDir.absolutePath}"
         jvmOptions += "-Djna.nounpack=true"
-        jvmOptions += "-Djna.boot.library.path=$nativeLibDir"
-        // 兜底：也把 nativeLibraryDir 放进 java.library.path
-        jvmOptions += "-Djava.library.path=$nativeLibDir:$libPath"
+        jvmOptions += "-Djna.nosys=false"
+        jvmOptions += "-Djna.library.path=${jnaDir.absolutePath}"
         // gl4es：OpenGL 2.x -> OpenGL ES 2/3 转译（Pojav 的默认渲染后端）
         jvmOptions += "-DLIBGL_ES=2"
         jvmOptions += "-Dorg.lwjgl.opengl.libname=libgl4es_114.so"
