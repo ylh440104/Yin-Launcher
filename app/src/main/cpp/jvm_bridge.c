@@ -202,6 +202,21 @@ static void *launch_thread(void *arg) {
     }
 
     LOGI("invoking %s.main (%d args)", job->mainClass, job->argCount);
+    /* 打印关键系统属性，Fabric 靠 java.class.path 定位游戏 jar */
+    jclass sysClass = (*jenv)->FindClass(jenv, "java/lang/System");
+    jmethodID getProp = (*jenv)->GetStaticMethodID(jenv, sysClass, "getProperty",
+            "(Ljava/lang/String;)Ljava/lang/String;");
+    const char *probe[] = {"java.class.path", "java.home", "sun.java.command",
+                           "user.dir", "os.arch", "java.version"};
+    for (int i = 0; i < 6; i++) {
+        jstring key = (*jenv)->NewStringUTF(jenv, probe[i]);
+        jstring val = (jstring) (*jenv)->CallStaticObjectMethod(jenv, sysClass, getProp, key);
+        const char *vc = val ? (*jenv)->GetStringUTFChars(jenv, val, NULL) : NULL;
+        LOGI("PROP %s = %s", probe[i], vc ? vc : "(null)");
+        if (vc) (*jenv)->ReleaseStringUTFChars(jenv, val, vc);
+        (*jenv)->DeleteLocalRef(jenv, key);
+    }
+
     (*jenv)->CallStaticVoidMethod(jenv, mc, mid, jargs);
     if ((*jenv)->ExceptionCheck(jenv)) {
         dump_exception(jenv, "main");

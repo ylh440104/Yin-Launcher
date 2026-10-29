@@ -140,6 +140,18 @@ object NativeJavaLauncher {
         jvmOptions += "-Djava.home=${execHome.absolutePath}"
         // 走 JNI_CreateJavaVM 时没有 java launcher 代劳这些初始化
         jvmOptions += "-Dsun.java.command=${version.mainClass}"
+        // Fabric 定位游戏 jar：显式给出，避免它猜 classpath 而失败
+        // fabric 版本身没有 jar，真正的 MC jar 在 inheritsFrom 指向的原版目录
+        val clientJar = listOfNotNull(
+            paths.versionJar(versionId).takeIf { it.exists() },
+            version.inheritsFrom?.let { paths.versionJar(it) }?.takeIf { it.exists() }
+        ).firstOrNull()
+        if (clientJar != null) {
+            jvmOptions += "-Dfabric.gameJarPath=${clientJar.absolutePath}"
+            onLog("[launcher] fabric.gameJarPath = ${clientJar.absolutePath}")
+        }
+        // Fabric 的 game dir（mods/config 都在这里）
+        jvmOptions += "-Dfabric.gameDir=${instanceDir.absolutePath}"
         jvmOptions += "-Djava.launcher.path=${execHome.absolutePath}/bin/java"
         jvmOptions += "-Dsun.java.launcher=SUN_STANDARD"
         jvmOptions += "-Dos.arch=aarch64"
