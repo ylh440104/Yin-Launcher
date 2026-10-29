@@ -68,8 +68,13 @@ jobs:
           cp -r payload/extract/assets/components/lwjgl3 app/src/main/assets/components/
           cp -r payload/extract/assets/components/caciocavallo17 app/src/main/assets/components/
           cp -r payload/extract/assets/components/security app/src/main/assets/components/
-          cp payload/extract/assets/components/jre-21/universal.tar.xz app/src/main/assets/runtime/jre21/
-          cp payload/extract/assets/components/jre-21/bin-arm64.tar.xz app/src/main/assets/runtime/jre21/
+          # JRE 换用 Zalith Launcher 2 的 jre-21（同源 Android 构建，配套
+          # caciocavallo 软渲染）。Pojav gladiolus 的 jre-21 在这台设备上
+          # 会出现 JIT pointer-tag abort / -Xint 过慢卡死。
+          ZB="https://raw.githubusercontent.com/ZalithLauncher/ZalithLauncher2/main/ZalithLauncher/src/main/assets/runtimes/jre-21"
+          curl -sL --retry 3 --max-time 300 -o app/src/main/assets/runtime/jre21/universal.tar.xz "$ZB/universal.tar.xz"
+          curl -sL --retry 3 --max-time 300 -o app/src/main/assets/runtime/jre21/bin-arm64.tar.xz "$ZB/bin-arm64.tar.xz"
+          ls -la app/src/main/assets/runtime/jre21/
           cp payload/extract/assets/components/jre/universal.tar.xz app/src/main/assets/runtime/jre8/
           cp payload/extract/assets/components/jre/bin-arm64.tar.xz app/src/main/assets/runtime/jre8/
           du -sh app/src/main/assets/runtime/*

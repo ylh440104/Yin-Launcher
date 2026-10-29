@@ -276,13 +276,10 @@ object NativeJavaLauncher {
         jvmOptions += "-XX:+UseSerialGC"
         // 这个 Android 版 JRE 的 JIT（C1 与 C2 都一样）会在 VM Thread 上触发
         // tagged-pointer abort（logcat: Pointer tag ... was truncated）。
-        // Android arm64 的 TBI（Top Byte Ignore）会让 JVM 的指针标记被截断，
-        // 触发 "Pointer tag for 0x... was truncated" 的 SIGABRT（VM Thread）。
-        // -XX:-UseTBI 关掉它；这是 JDK 专门为 arm64 提供的开关。
+        // 注意：这个 Android 定制 JRE 没有 -XX:UseTBI / UseTaggedPointers
+        // （实测 Unrecognized VM option，会让 JNI_CreateJavaVM 直接返回 -6）。
+        // 保留 C1-only：比 -Xint 快得多，且 C1 不触发 C2 的 pointer-tag 检查。
         jvmOptions += "-XX:+UnlockExperimentalVMOptions"
-        jvmOptions += "-XX:-UseTBI"
-        // 只跑 C1，跳过与 TBI 交互更多的 C2；-Xint 纯解释器太慢，
-        // 会让 Datafixer 之后长时间无进展、CPU 打满而无首帧。
         jvmOptions += "-XX:TieredStopAtLevel=1"
         jvmOptions += "-XX:-UseCompressedOops"
         jvmOptions += "-XX:-UseCompressedClassPointers"
