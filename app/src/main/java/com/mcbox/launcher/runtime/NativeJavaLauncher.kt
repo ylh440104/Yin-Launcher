@@ -180,14 +180,16 @@ object NativeJavaLauncher {
         val nativeLibDir = nativeLibDirPath
         jvmOptions += "-Dorg.lwjgl.librarypath=$nativeLibDir"
         // JNA 只认这个属性找 libjnidispatch.so；不指定会去 jar 里解压 glibc 版而失败
-        // JNA：jniLibs 里已有 Android 版 libjnidispatch.so（依赖 libc.so，6.1.6）。
-        // 不加 nounpack 时，JNA 会优先从 jna-*.jar 解压 glibc 版 linux-aarch64
-        // 到 cache 再 dlopen，报 "library libc.so.6 not found" 而整体失败。
-        // nounpack=true + boot.library.path 让它直接用 jniLibs 里那份。
-        jvmOptions += "-Djna.boot.library.path=$nativeLibDir"
-        jvmOptions += "-Djna.nounpack=true"
+        // JNA：jna-5.17.0.jar 里只带 glibc 版 linux-aarch64/libjnidispatch.so
+        // （依赖 libc.so.6，Android bionic 没有），JNA 默认解压它到 tmp 再 dlopen
+        // 必然失败。jniLibs 里那份是 Android 版（依赖 libc.so）。
+        // nosys=false 允许 JNA 用 System.loadLibrary("jnidispatch")，Android 会从
+        // nativeLibraryDir 解析到我们打包的那份；nounpack=true 阻止它解压 jar。
         jvmOptions += "-Djna.nosys=false"
-        jvmOptions += "-Djna.tmpdir=${context.filesDir.absolutePath}"
+        jvmOptions += "-Djna.nounpack=true"
+        jvmOptions += "-Djna.boot.library.path=$nativeLibDir"
+        // 兜底：也把 nativeLibraryDir 放进 java.library.path
+        jvmOptions += "-Djava.library.path=$nativeLibDir:$libPath"
         // gl4es：OpenGL 2.x -> OpenGL ES 2/3 转译（Pojav 的默认渲染后端）
         jvmOptions += "-DLIBGL_ES=2"
         jvmOptions += "-Dorg.lwjgl.opengl.libname=libgl4es_114.so"
