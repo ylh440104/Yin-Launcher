@@ -18,7 +18,6 @@ import com.mcbox.launcher.data.InstanceStore
 import com.mcbox.launcher.data.SettingsStore
 
 import com.mcbox.launcher.runtime.RuntimeManager
-import net.kdt.pojavlaunch.utils.JREUtils
 import java.io.File
 
 object AutoTestBridge {

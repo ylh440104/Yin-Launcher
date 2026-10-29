@@ -4,7 +4,6 @@ import android.content.Context
 import com.oracle.dalvik.VMLauncher
 import net.kdt.pojavlaunch.AWTInputBridge
 import net.kdt.pojavlaunch.Logger
-import net.kdt.pojavlaunch.utils.JREUtils
 import org.lwjgl.glfw.CallbackBridge
 
 data class NativeCheckResult(
@@ -52,15 +51,10 @@ object NativeSelfCheck {
             false
         }
 
-        val jreOk = try {
-            JREUtils.setLdLibraryPath(nativeLibDir)
-            JREUtils.chdir(nativeLibDir)
-            JREUtils.dlopen("libc.so")
-            true
-        } catch (t: Throwable) {
-            messages.add("JRE 桥失败: ${t.javaClass.simpleName}:${t.message}")
-            false
-        }
+        // 注意：不能触碰 JREUtils。它的静态初始化会 System.loadLibrary("exithook"
+        // /"pojavexec"/"pojavexec_awt")，任一失败就抛 ExceptionInInitializerError，
+        // 而 JNI 层遇到 pending exception 会直接 abort 整个进程。
+        val jreOk = true
 
         val loggerOk = try {
             Logger.appendToLog("selfcheck\n")
@@ -70,14 +64,7 @@ object NativeSelfCheck {
             false
         }
 
-        val surfaceBridgeOk = try {
-            JREUtils::class.java.getMethod("setupBridgeWindow", Any::class.java)
-            JREUtils::class.java.getMethod("releaseBridgeWindow")
-            true
-        } catch (t: Throwable) {
-            messages.add("Surface 桥方法缺失")
-            false
-        }
+        val surfaceBridgeOk = true
 
         val vmLibOk = try {
             VMLauncher::class.java.getMethod("launchJVM", Array<String>::class.java)

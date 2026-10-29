@@ -368,44 +368,9 @@ fun SettingsScreen() {
                         }
                     }) { Text("运行自检") }
                     var jvmReport by remember { mutableStateOf("") }
-                    OutlinedButton(onClick = {
-                        scope.launch {
-                            jvmReport = "JVM 启动测试中..."
-                            jvmReport = withContext(Dispatchers.IO) {
-                                try {
-                                    val jre = Class.forName("net.kdt.pojavlaunch.utils.JREUtils")
-                                    jre.getMethod("ensureLoaded").invoke(null)
-                                    val st = com.mcbox.launcher.data.SettingsStore(context)
-                                    val st2 = st.paths()
-                                    val rm = com.mcbox.launcher.runtime.RuntimeManager(context, st2.runtimes)
-                                    val rt = rm.findForMajor(21) ?: rm.findForMajor(17)
-                                        ?: return@withContext "未找到 JRE，请先安装"
-                                    val zc = Class.forName("net.kdt.pojavlaunch.utils.ZalithUtils")
-                                    fun setF(name: String, value: Any?) {
-                                        val f = zc.getDeclaredField(name)
-                                        f.isAccessible = true
-                                        f.set(null, value)
-                                    }
-                                    setF("gameHome", st2.root.absolutePath)
-                                    setF("cacheDir", context.cacheDir)
-                                    setF("dataDir", java.io.File(context.filesDir.parent))
-                                    val m = zc.getMethod("launchWithUtils", android.content.Context::class.java, String::class.java, String::class.java, String::class.java, List::class.java, String::class.java, Runnable::class.java)
-                                    val th = Thread {
-                                        try {
-                                            m.invoke(null, context, "arm64-v8a", rt.home.absolutePath, st2.root.absolutePath, listOf("-version"), "", null)
-                                        } catch (t: Throwable) {
-                                            android.util.Log.w("JvmTest", "probe failed", t)
-                                        }
-                                    }
-                                    th.name = "jvm-probe"
-                                    th.start()
-                                    "JVM -version 测试已启动，10 秒后看游戏目录下 jvm-console.txt"
-                                } catch (t: Throwable) {
-                                    "测试失败: " + t.stackTraceToString()
-                                }
-                            }
-                        }
-                    }) { Text("JVM 测试") }
+                    // 旧的 JVM 测试按钮依赖已删除的 ZalithUtils/JREUtils（其 clinit 会 abort 进程），
+                    // 这里改为纯提示，实际验证请直接点“启动游戏”。
+                    Text("JVM 验证请直接点击启动游戏，输出见 logs/latest.log", fontSize=12.sp)
                 }
                 if (nativeReport.isNotEmpty()) {
                     Spacer(Modifier.height(8.dp))

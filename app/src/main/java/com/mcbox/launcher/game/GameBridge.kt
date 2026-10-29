@@ -15,7 +15,6 @@ import com.mcbox.launcher.data.SettingsStore
 import com.mcbox.launcher.runtime.NativeJavaLauncher
 import com.mcbox.launcher.runtime.NativeSelfCheck
 import com.mcbox.launcher.runtime.RuntimeManager
-import net.kdt.pojavlaunch.utils.JREUtils
 import org.lwjgl.glfw.CallbackBridge
 import java.io.File
 
@@ -54,7 +53,6 @@ object GameBridge {
 
         thread = Thread {
             try {
-                Class.forName("net.kdt.pojavlaunch.utils.JREUtils").getMethod("ensureLoaded").invoke(null)
                 CallbackBridge.sendUpdateWindowSize(width, height)
                 activity.appendStatus("解析版本 ${instance.versionId}")
                 val resolver = VersionResolver(paths)
@@ -159,10 +157,6 @@ object GameBridge {
                         parentFile?.mkdirs()
                         writeText(msg)
                     }
-                } catch (ignored: Throwable) {
-                }
-                try {
-                    JREUtils.appendLog("launch failed: $msg")
                 } catch (ignored: Throwable) {
                 }
                 exited.set(true)
