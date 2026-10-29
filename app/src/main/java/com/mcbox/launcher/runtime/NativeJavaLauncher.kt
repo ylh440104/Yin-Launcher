@@ -219,6 +219,16 @@ object NativeJavaLauncher {
             onLog("[launcher] dup2 failed: ${t.message}")
         }
 
+        // 决定性条件：JLI_Launch 用 cwd + argv[0] 推导 java.home，cwd 必须是 JRE 根，
+        // 否则它会尝试 exec <错乱路径>/bin/java 并报 Permission denied 后直接退出。
+        try {
+            val rc = jreUtils.getMethod("chdir", String::class.java)
+                .invoke(null, execHome.absolutePath) as Int
+            onLog("[launcher] chdir ${execHome.absolutePath} = $rc")
+        } catch (t: Throwable) {
+            onLog("[launcher] chdir failed: ${t.message}")
+        }
+
         onLog("[launcher] calling VMLauncher.launchJVM, args=${vmArgs.size}")
 
         val exit = try {
