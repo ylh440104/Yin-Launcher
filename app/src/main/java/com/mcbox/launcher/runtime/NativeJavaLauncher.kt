@@ -198,10 +198,10 @@ object NativeJavaLauncher {
         } catch (t: Throwable) {
             onLog("[launcher] jna lib copy failed: ${t.message}")
         }
-        jvmOptions += "-Djna.boot.library.path=${jnaDir.absolutePath}"
-        jvmOptions += "-Djna.nounpack=true"
+        // native 侧已用 System.load(绝对路径) 预载 libjnidispatch.so 并 RTLD_GLOBAL，
+        // 所以这里不要让 JNA 去 boot.library.path 找（那样会走 System.load 失败路径），
+        // 保持默认的 System.loadLibrary("jnidispatch") 命中已加载库。
         jvmOptions += "-Djna.nosys=false"
-        jvmOptions += "-Djna.library.path=${jnaDir.absolutePath}"
         // gl4es：OpenGL 2.x -> OpenGL ES 2/3 转译（Pojav 的默认渲染后端）
         jvmOptions += "-DLIBGL_ES=2"
         jvmOptions += "-Dorg.lwjgl.opengl.libname=libgl4es_114.so"
@@ -232,9 +232,10 @@ object NativeJavaLauncher {
         // 不要限 -Xss：MethodHandle/MethodHandles.Lookup 在 fabric 里会深层调用，
         // 栈太小会触发 NoSuchMethodError(invokeVirtual/invokeSpecial) 链。
         jvmOptions += "-XX:+UseSerialGC"
-        // 这个 Android 版 JRE 的 JIT 会在 VM Thread 上触发 tagged-pointer abort
-        // （logcat: Pointer tag ... was truncated）。实测 -Xint 可稳定通过，先关 JIT。
-        jvmOptions += "-Xint"
+        // 这个 Android 版 JRE 的 C2 会在 VM Thread 上触发 tagged-pointer abort
+        // （logcat: Pointer tag ... was truncated）。只开 C1，跳过 C2。
+        jvmOptions += "-XX:TieredStopAtLevel=1"
+        jvmOptions += "-XX:-UseCompressedOops"
         // 受限环境下 JIT 生成的方法句柄调用点可能解析失败（NoSuchMethodError
         // invokeVirtual/invokeSpecial 链），先只跑 C1 保证正确性。
         jvmOptions += "-Dfile.encoding=UTF-8"
