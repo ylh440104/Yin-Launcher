@@ -61,6 +61,12 @@ object NativeJavaLauncher {
         val lwjglOverride = prepareLwjglOverride(context, paths, onLog)
         val classpath = buildClasspath(paths, version, versionId, lwjglOverride)
         onLog("[launcher] classpath entries = ${classpath.size}")
+        onLog("[launcher] inheritsFrom = ${version.inheritsFrom}")
+        onLog("[launcher] mainClass = ${version.mainClass}")
+        // 打印是否包含 MC 主 jar（Fabric 靠它定位游戏）
+        val mcJarHint = classpath.firstOrNull { it.name == "1.21.11.jar" || it.name.matches(Regex("\d+\.\d+\.\d+\.jar")) }
+        onLog("[launcher] MC jar in cp = ${mcJarHint?.absolutePath ?: "NONE"}")
+        classpath.take(6).forEach { onLog("[launcher] cp: ${it.absolutePath}") }
 
         val nativesDir = paths.nativeDir(versionId)
         // nativeLibraryDir 必须排第一：LWJGL/gl4es/openal 这些 Android 版 so 都在这里，
@@ -310,12 +316,23 @@ object NativeJavaLauncher {
         // Android 版 LWJGL 优先
         if (lwjglOverride != null && lwjglOverride.exists()) result += lwjglOverride
 
-        // 1) 版本主 jar
+        // 1) 版本主 jar + 父版本 jar
         val versionJar = paths.versionJar(versionId)
         if (versionJar.exists()) result += versionJar
         version.inheritsFrom?.let { parent ->
             val parentJar = paths.versionJar(parent)
             if (parentJar.exists()) result += parentJar
+        }
+        // 兜底：loader 版的 jar 常常不存在（只有 json），真正的游戏 jar 在
+        // versions/<原版 id>/<原版 id>.jar。只要它没进 classpath，Fabric 就报
+        // "couldn't locate the game"。这里扫描并补上。
+        val versionsRoot = File(paths.root, "versions")
+        if (versionsRoot.exists()) {
+            versionsRoot.listFiles()?.forEach { dir ->
+                if (!dir.isDirectory) return@forEach
+                val jar = File(dir, dir.name + ".jar")
+                if (jar.exists() && jar.length() > 1024L * 1024L) result += jar
+            }
         }
 
         // 2) libraries 下的所有 jar（libraries 布局已由下载器按 maven 路径建好）
