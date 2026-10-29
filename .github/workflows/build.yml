@@ -99,6 +99,16 @@ jobs:
                 break
               fi
             done
+            # JRE 的 so 互相依赖（libnio -> libnet 等），JVM 只在
+            # classloader-namespace 里解析，JRE 目录不在该 namespace，
+            # 因此把运行期必需的核心 so 一并打进 nativeLibraryDir。
+            for lib in libnet.so libnio.so libzip.so libjava.so libverify.so libjimage.so libjsig.so; do
+              tar -xJf app/src/main/assets/runtime/jre21/bin-arm64.tar.xz -C tmpjre ./lib/$lib 2>/dev/null || true
+              if [ -f tmpjre/lib/$lib ]; then
+                cp tmpjre/lib/$lib app/src/main/jniLibs/arm64-v8a/$lib
+                echo "PACKED $lib"
+              fi
+            done
             if [ -f tmpjre/lib/libjli.so ]; then
               cp tmpjre/lib/libjli.so app/src/main/jniLibs/arm64-v8a/libjli.so
               echo "LIBJLI_PACKED"
