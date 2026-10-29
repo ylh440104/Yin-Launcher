@@ -23,7 +23,8 @@ import java.io.File;
 public class MainActivity extends Activity {
     private static final String TAG = "PojavBridge";
 
-    private static ClipboardManager GLOBAL_CLIPBOARD;
+    /** 由 CallbackBridge 的剪贴板回调直接访问，必须是包可见 */
+    public static ClipboardManager GLOBAL_CLIPBOARD;
     private static Context sContext;
 
     public static void attach(Context ctx) {
