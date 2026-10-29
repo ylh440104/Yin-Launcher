@@ -150,6 +150,8 @@ object NativeJavaLauncher {
         // 不要限 -Xss：MethodHandle/MethodHandles.Lookup 在 fabric 里会深层调用，
         // 栈太小会触发 NoSuchMethodError(invokeVirtual/invokeSpecial) 链。
         jvmOptions += "-XX:+UseSerialGC"
+        // 受限环境下 JIT 生成的方法句柄调用点可能解析失败（NoSuchMethodError
+        // invokeVirtual/invokeSpecial 链），先只跑 C1 保证正确性。
         jvmOptions += "-Dfile.encoding=UTF-8"
         jvmOptions += "-Duser.home=${paths.root.absolutePath}"
         jvmOptions += "-Duser.dir=${paths.root.absolutePath}"
