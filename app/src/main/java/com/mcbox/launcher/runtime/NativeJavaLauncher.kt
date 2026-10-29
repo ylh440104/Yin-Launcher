@@ -1,5 +1,6 @@
 package com.mcbox.launcher.runtime
 
+import android.system.Os
 import android.content.Context
 import com.mcbox.core.GamePaths
 import com.mcbox.core.model.VersionJson
@@ -136,11 +137,6 @@ object NativeJavaLauncher {
         // namespace 拿不到该私有符号，会抛 UnsatisfiedLinkError。
         // libjli.so 已随 APK 打进 nativeLibraryDir，与 libjavaexec.so 同目录，
         // linker 按 SONAME 同目录解析即可，不需要改 LD_LIBRARY_PATH。
-        try {
-            android.system.Os.setenv("LD_LIBRARY_PATH", libPath, true)
-        } catch (t: Throwable) {
-            onLog("[launcher] setenv failed: ${t.message}")
-        }
         // 走 libpojavexec.so 里的 VMLauncher.launchJVM：
         //   jre_launcher.c: dlopen(libjli.so) -> dlsym("JLI_Launch") -> 调用
         // 这是 Pojav 原版真正使用的入口，也是绕开 SELinux exec 限制的正解。
@@ -155,15 +151,18 @@ object NativeJavaLauncher {
 
         // 关键：JLI_Launch 之前必须把 JRE 的核心 so 都载入进程（libjli 的 JLI_Launch
         // 会在已加载的库中查找 libjvm）。Pojav 的 initJavaRuntime 做的就是这件事。
+        // 顺序至关重要：libjava/libzip/libnio 等都 DT_NEEDED libjvm.so，
+        // 而 libjvm.so 位于 lib/server/，不在 linker 的默认搜索路径里。
+        // 必须先把 libjvm.so 载入进程，后面那些才能解析成功。
         val needLibs = ArrayList<String>()
         needLibs += File(nativeDir, "libjli.so").absolutePath
-        for (n in listOf("libjava.so", "libverify.so", "libnet.so", "libnio.so",
-                         "libzip.so", "libjimage.so", "libjvm.so")) {
+        val serverJvm = File(serverDir, "libjvm.so")
+        if (serverJvm.exists()) needLibs += serverJvm.absolutePath
+        for (n in listOf("libjava.so", "libverify.so", "libzip.so", "libnet.so",
+                         "libnio.so", "libjimage.so", "libjsig.so")) {
             val f = File(libDir, n)
             if (f.exists()) needLibs += f.absolutePath
         }
-        val serverJvm = File(serverDir, "libjvm.so")
-        if (serverJvm.exists()) needLibs += serverJvm.absolutePath
 
         val dlopen = jreUtils.getMethod("dlopen", String::class.java)
         for (p in needLibs) {
@@ -179,6 +178,19 @@ object NativeJavaLauncher {
         vmArgs += "java"                 // argv[0] 按 C 标准是程序名
         vmArgs += "-Djava.home=${execHome.absolutePath}"
         vmArgs += args.drop(1)
+
+        // JLI_Launch 依赖这些环境变量定位 JRE 与 native 库
+        val fullLdPath = libPath + ":" + libDir.absolutePath + ":" + serverDir.absolutePath +
+                ":" + nativeDir + ":/system/lib64:/vendor/lib64"
+        try {
+            Os.setenv("LD_LIBRARY_PATH", fullLdPath, true)
+            Os.setenv("JAVA_HOME", execHome.absolutePath, true)
+            Os.setenv("HOME", paths.root.absolutePath, true)
+            Os.setenv("TMPDIR", context.cacheDir.absolutePath, true)
+            onLog("[launcher] env set: JAVA_HOME=${execHome.absolutePath}")
+        } catch (t: Throwable) {
+            onLog("[launcher] setenv failed: ${t.message}")
+        }
 
         onLog("[launcher] calling VMLauncher.launchJVM, args=${vmArgs.size}")
 
