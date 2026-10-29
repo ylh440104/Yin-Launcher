@@ -148,6 +148,27 @@ Java_com_mcbox_launcher_runtime_JvmBridge_nativeChdir(JNIEnv *env, jclass clazz,
 static void *launch_thread(void *arg) {
     LaunchJob *job = (LaunchJob *) arg;
 
+    /* libpojavexec 的 hookExec() 用
+     *   dlsym(RTLD_DEFAULT, "Java_java_lang_UNIXProcess_forkAndExec")
+     * 找符号；该符号在 libjava.so 里。RTLD_DEFAULT 只搜全局符号表，
+     * 所以 libjava.so 必须在任何 RTLD_LOCAL 加载之前以 RTLD_GLOBAL 进来。
+     * 找不到时 hookClass==NULL，RegisterNatives(NULL, ...) 跳地址 0，
+     * 这正是 mcbox-launch 线程上 SEGV_MAPERR addr 0x0 的来源。
+     */
+    {
+        const char *extra[] = {"libjava.so", "libnet.so", "libnio.so",
+                               "libzip.so", "libjimage.so", "libverify.so"};
+        char jp[1024];
+        for (int i = 0; i < 6; i++) {
+            snprintf(jp, sizeof(jp), "%s/../lib/%s", job->libjvmPath, extra[i]);
+            void *eh = dlopen(jp, RTLD_NOW | RTLD_GLOBAL);
+            if (eh) {
+                LOGI("jre preload ok: %s", extra[i]);
+            } else {
+                LOGI("jre preload miss: %s (%s)", extra[i], dlerror());
+            }
+        }
+    }
     void *handle = dlopen(job->libjvmPath, RTLD_NOW | RTLD_GLOBAL);
     if (handle == NULL) {
         LOGE("dlopen libjvm failed: %s", dlerror());
@@ -270,9 +291,15 @@ static void *launch_thread(void *arg) {
                                  // 函数指针为 0，Render thread 上跳空指针 SIGSEGV。
                                  "libpojavexec.so", "libexithook.so",
                                  "libEGL.so", "libGLESv2.so", "libandroid.so",
-                                 "liblinkerhook.so", "libOSMesa.so"};
+                                 "liblinkerhook.so", "libOSMesa.so",
+                                 // hookExec 用 dlsym(RTLD_DEFAULT, "Java_java_lang_UNIXProcess_"
+                                 // "forkAndExec") 找这个符号；它在 libjava.so 里，
+                                 // 且必须 RTLD_GLOBAL 才能被 RTLD_DEFAULT 搜到。
+                                 // 找不到时 hookClass 为 NULL，RegisterNatives(NULL,...)
+                                 // 直接跳地址 0（SEGV_MAPERR 0x0）。
+                                 "libjava.so"};
         char full[1024];
-        for (int i = 0; i < 16; i++) {
+        for (int i = 0; i < 17; i++) {
             snprintf(full, sizeof(full), "%s/%s", job->nativeLibDir, natLibs[i]);
             jstring pj = (*jenv)->NewStringUTF(jenv, full);
             (*jenv)->CallStaticVoidMethod(jenv, sysC, mdLoad, pj);
