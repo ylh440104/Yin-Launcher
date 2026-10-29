@@ -1,5 +1,6 @@
 package com.mcbox.launcher.runtime
 
+import android.os.ParcelFileDescriptor
 import android.system.Os
 import android.content.Context
 import com.mcbox.core.GamePaths
@@ -190,6 +191,32 @@ object NativeJavaLauncher {
             onLog("[launcher] env set: JAVA_HOME=${execHome.absolutePath}")
         } catch (t: Throwable) {
             onLog("[launcher] setenv failed: ${t.message}")
+        }
+
+        // JLI_Launch 的输出走 native stdout/stderr，必须重定向到 logcat 的 jrelog
+        // 标签，否则 JVM 为什么退出完全看不到（Pojav 的既有机制）。
+        try {
+            jreUtils.getMethod("redirectAndPrintJRELog").invoke(null)
+            onLog("[launcher] JRE log redirect started")
+        } catch (t: Throwable) {
+            onLog("[launcher] redirectAndPrintJRELog failed: ${t.message}")
+        }
+
+        // 双保险：把 native 的 fd 1/2 直接 dup2 到文件，JVM 的一切输出都会落盘。
+        val consoleFile = File(paths.root, "jvm-console.txt")
+        try {
+            consoleFile.parentFile?.mkdirs()
+            val fd = ParcelFileDescriptor.open(
+                consoleFile,
+                ParcelFileDescriptor.MODE_CREATE or ParcelFileDescriptor.MODE_WRITE_ONLY or
+                        ParcelFileDescriptor.MODE_TRUNCATE
+            )
+            Os.dup2(fd.fileDescriptor, 1)
+            Os.dup2(fd.fileDescriptor, 2)
+            fd.close()
+            onLog("[launcher] stdout/stderr -> ${consoleFile.absolutePath}")
+        } catch (t: Throwable) {
+            onLog("[launcher] dup2 failed: ${t.message}")
         }
 
         onLog("[launcher] calling VMLauncher.launchJVM, args=${vmArgs.size}")
