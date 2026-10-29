@@ -168,6 +168,8 @@ object NativeJavaLauncher {
         // LWJGL 在 Android 上从 nativeLibraryDir 找 so；org.lwjgl.librarypath 必须包含它
         val nativeLibDir = nativeLibDirPath
         jvmOptions += "-Dorg.lwjgl.librarypath=$nativeLibDir"
+        // JNA 只认这个属性找 libjnidispatch.so；不指定会去 jar 里解压 glibc 版而失败
+        jvmOptions += "-Djna.boot.library.path=$nativeLibDir"
         // gl4es：OpenGL 2.x -> OpenGL ES 2/3 转译（Pojav 的默认渲染后端）
         jvmOptions += "-DLIBGL_ES=2"
         jvmOptions += "-Dorg.lwjgl.opengl.libname=libgl4es_114.so"
@@ -216,6 +218,14 @@ object NativeJavaLauncher {
         // 只保留轻量诊断标签：all=info 会打开 verification/dependencies 等重量级日志，
         // 在受限环境下频繁 deopt 会打乱 LambdaForm 自举（NoSuchMethodError 链）。
         jvmOptions += "-Xlog:exceptions=info,class+load=info,os+thread=info:file=${paths.root.absolutePath}/jvm-xlog.txt:time,level,tags"
+
+        // 让 native 把 Java 异常写到固定文件，logcat 会被系统噪音冲掉
+        try {
+            android.system.Os.setenv("MCBOX_EX_DUMP",
+                File(paths.root, "java-exception.txt").absolutePath, true)
+        } catch (t: Throwable) {
+            onLog("[launcher] setenv MCBOX_EX_DUMP failed: ${t.message}")
+        }
 
         onLog("[launcher] creating JVM (dedicated thread), options=${jvmOptions.size}")
         val gameArgs2 = ArrayList(args.drop(args.indexOf(version.mainClass) + 1))
