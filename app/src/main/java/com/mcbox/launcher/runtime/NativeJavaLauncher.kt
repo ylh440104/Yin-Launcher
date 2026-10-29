@@ -218,7 +218,12 @@ object NativeJavaLauncher {
                 assetJar.use { ins -> patched.outputStream().use { outs -> ins.copyTo(outs) } }
                 onLog("[launcher] jna patched jar -> ${patched.absolutePath} (${patched.length()} bytes)")
                 val jnaJars = paths.libraries.walkTopDown()
-                    .filter { it.isFile && it.name.startsWith("jna-") && it.name.endsWith(".jar") }
+                    // 只替换核心 jna-<version>.jar，不能碰 jna-platform-<version>.jar，
+                    // 否则会把它覆盖成核心 jar，导致 oshi 找
+                    // com/sun/jna/platform/linux/LibC$Sysinfo 时 NoClassDefFoundError。
+                    .filter {
+                        it.isFile && it.name.matches(Regex("jna-[0-9]+[.][0-9]+[.][0-9]+[.]jar"))
+                    }
                     .toList()
                 for (jarFile in jnaJars) {
                     patched.copyTo(jarFile, overwrite = true)
