@@ -4,24 +4,33 @@
 #include <stdlib.h>
 #include <string.h>
 #include <pthread.h>
+#include <stdarg.h>
 #include <android/log.h>
-
-/* 崩溃/异常详情除了 logcat，还落盘一份，避免被日志洪水冲掉 */
-static char g_dumpPath[512] = {0};
-
-static void dump_to_file(const char *line) {
-    if (g_dumpPath[0] == 0) return;
-    FILE *f = fopen(g_dumpPath, "a");
-    if (f == NULL) return;
-    fputs(line, f);
-    fputc('
-', f);
-    fclose(f);
-}
 
 #define TAG "JvmBridge"
 #define LOGI(...) __android_log_print(ANDROID_LOG_INFO, TAG, __VA_ARGS__)
 #define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, TAG, __VA_ARGS__)
+
+/* Java 异常除了打 logcat，还落盘一份：logcat 会被系统噪音冲掉 */
+static char g_dumpPath[512] = {0};
+
+static void dump_line(const char *line) {
+    if (g_dumpPath[0] == 0) return;
+    FILE *f = fopen(g_dumpPath, "a");
+    if (f == NULL) return;
+    fputs(line, f);
+    fputc('\n', f);
+    fclose(f);
+}
+
+static void dump_fmt(const char *fmt, ...) {
+    char buf[2048];
+    va_list ap;
+    va_start(ap, fmt);
+    vsnprintf(buf, sizeof(buf), fmt, ap);
+    va_end(ap);
+    dump_line(buf);
+}
 
 typedef jint (*CreateJavaVM_t)(JavaVM **, void **, void *);
 
@@ -81,8 +90,7 @@ static void dump_exception(JNIEnv *e, const char *where) {
         jstring n = (jstring) (*e)->CallObjectMethod(e, t, tn);
         if (n) {
             const char *c = (*e)->GetStringUTFChars(e, n, NULL);
-            LOGE("[%s] EX %s", where, c ? c : "?");
-            { char b[1024]; snprintf(b, sizeof(b), "[%s] EX %s", where, c ? c : "?"); dump_to_file(b); }
+            LOGE("[%s] EX %s", where, c ? c : "?"); dump_fmt("[%s] EX %s", where, c ? c : "?");
             (*e)->ReleaseStringUTFChars(e, n, c);
         }
     }
@@ -90,8 +98,7 @@ static void dump_exception(JNIEnv *e, const char *where) {
         jstring m = (jstring) (*e)->CallObjectMethod(e, t, tm);
         if (m) {
             const char *c = (*e)->GetStringUTFChars(e, m, NULL);
-            LOGE("[%s] MSG %s", where, c ? c : "?");
-            { char b[2048]; snprintf(b, sizeof(b), "[%s] MSG %s", where, c ? c : "?"); dump_to_file(b); }
+            LOGE("[%s] MSG %s", where, c ? c : "?"); dump_fmt("[%s] MSG %s", where, c ? c : "?");
             (*e)->ReleaseStringUTFChars(e, m, c);
         }
     }
@@ -109,8 +116,7 @@ static void dump_exception(JNIEnv *e, const char *where) {
         jstring cms = cm ? (jstring) (*e)->CallObjectMethod(e, cause, cm) : NULL;
         const char *cnc = cns ? (*e)->GetStringUTFChars(e, cns, NULL) : NULL;
         const char *cmc = cms ? (*e)->GetStringUTFChars(e, cms, NULL) : NULL;
-        LOGE("[%s] cause[%d] %s: %s", where, depth, cnc ? cnc : "?", cmc ? cmc : "?");
-        { char b[2048]; snprintf(b, sizeof(b), "[%s] cause[%d] %s: %s", where, depth, cnc ? cnc : "?", cmc ? cmc : "?"); dump_to_file(b); }
+        LOGE("[%s] cause[%d] %s: %s", where, depth, cnc ? cnc : "?", cmc ? cmc : "?"); dump_fmt("[%s] cause[%d] %s: %s", where, depth, cnc ? cnc : "?", cmc ? cmc : "?");
         if (cnc) (*e)->ReleaseStringUTFChars(e, cns, cnc);
         if (cmc) (*e)->ReleaseStringUTFChars(e, cms, cmc);
         jobject next = (*e)->CallObjectMethod(e, cause, getCause);
@@ -311,7 +317,7 @@ Java_com_mcbox_launcher_runtime_JvmBridge_nativeLaunch(JNIEnv *env, jclass clazz
     pthread_mutex_init(&job.lock, NULL);
     pthread_cond_init(&job.cond, NULL);
 
-    /* 异常详情日志落盘 */
+    /* 异常详情落盘路径由 Kotlin 侧通过环境变量给出 */
     const char *dumpPath = getenv("MCBOX_EX_DUMP");
     if (dumpPath != NULL) {
         snprintf(g_dumpPath, sizeof(g_dumpPath), "%s", dumpPath);
