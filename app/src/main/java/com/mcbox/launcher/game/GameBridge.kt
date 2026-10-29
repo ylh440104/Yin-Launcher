@@ -51,7 +51,14 @@ object GameBridge {
         val instanceDir = File(paths.instances, instance.id).apply { mkdirs() }
         val account = resolveAccount(settings, instance.accountId)
 
-        thread = Thread {
+        // CallbackBridge 的 <clinit> 调用 Choreographer.getInstance()，
+        // 要求当前线程带 Looper。普通 Thread 没有 Looper ->
+        // IllegalStateException: The current thread must have a looper!
+        // 用 HandlerThread 自带 Looper，并在内部跑 Looper.loop()。
+        lateinit var handlerThread: android.os.HandlerThread
+        thread = null
+        handlerThread = android.os.HandlerThread("mcbox-launch").apply { start() }
+        android.os.Handler(handlerThread.looper).post {
             try {
                 CallbackBridge.sendUpdateWindowSize(width, height)
                 activity.appendStatus("解析版本 ${instance.versionId}")
