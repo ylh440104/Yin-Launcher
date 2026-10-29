@@ -219,7 +219,8 @@ object NativeJavaLauncher {
                 jvmOptions.toTypedArray(),
                 version.mainClass,
                 gameArgs2.toTypedArray(),
-                classpath.map { it.absolutePath }.toTypedArray()
+                classpath.map { it.absolutePath }.toTypedArray(),
+                nativeLibDir
             )
         } catch (t: Throwable) {
             var c: Throwable? = t

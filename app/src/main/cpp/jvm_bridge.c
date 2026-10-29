@@ -19,6 +19,7 @@ typedef struct {
     char *libjvmPath;
     int optionCount;
     char **options;
+    char *nativeLibDir;
     char *mainClass;
     int argCount;
     char **mainArgs;
@@ -202,6 +203,34 @@ static void *launch_thread(void *arg) {
     }
 
     LOGI("invoking %s.main (%d args)", job->mainClass, job->argCount);
+    /* 关键：JVM 不是由 Android Runtime 创建的，classloader.findLibrary 拿不到
+     * nativeLibraryDir，System.loadLibrary("lwjgl") 会失败。
+     * 这里用绝对路径把所有 LWJGL native 预加载进进程，之后
+     * System.loadLibrary 命中已加载的同名库即可。 */
+    {
+        jclass sysC = (*jenv)->FindClass(jenv, "java/lang/System");
+        jmethodID mdLoad = (*jenv)->GetStaticMethodID(jenv, sysC, "load",
+                "(Ljava/lang/String;)V");
+        const char *natLibs[] = {"liblwjgl.so", "liblwjgl_opengl.so",
+                                 "liblwjgl_stb.so", "liblwjgl_tinyfd.so",
+                                 "liblwjgl_nanovg.so", "libopenal.so",
+                                 "libgl4es_114.so", "libfreetype.so",
+                                 "libjnidispatch.so"};
+        char full[1024];
+        for (int i = 0; i < 9; i++) {
+            snprintf(full, sizeof(full), "%s/%s", job->nativeLibDir, natLibs[i]);
+            jstring pj = (*jenv)->NewStringUTF(jenv, full);
+            (*jenv)->CallStaticVoidMethod(jenv, sysC, mdLoad, pj);
+            if ((*jenv)->ExceptionCheck(jenv)) {
+                (*jenv)->ExceptionClear(jenv);
+                LOGI("preload skipped: %s", natLibs[i]);
+            } else {
+                LOGI("preload ok: %s", natLibs[i]);
+            }
+            (*jenv)->DeleteLocalRef(jenv, pj);
+        }
+    }
+
     /* 打印关键系统属性，Fabric 靠 java.class.path 定位游戏 jar */
     jclass sysClass = (*jenv)->FindClass(jenv, "java/lang/System");
     jmethodID getProp = (*jenv)->GetStaticMethodID(jenv, sysClass, "getProperty",
@@ -237,12 +266,14 @@ finish:
 JNIEXPORT jintArray JNICALL
 Java_com_mcbox_launcher_runtime_JvmBridge_nativeLaunch(JNIEnv *env, jclass clazz,
         jstring libjvmPath, jobjectArray jvmOptions,
-        jstring mainClassName, jobjectArray mainArgs, jobjectArray classpath) {
+        jstring mainClassName, jobjectArray mainArgs, jobjectArray classpath,
+        jstring nativeLibDir) {
     LaunchJob job;
     memset(&job, 0, sizeof(job));
     job.libjvmPath = dup_utf(env, libjvmPath);
     job.options = dup_array(env, jvmOptions, &job.optionCount);
     job.mainClass = dup_utf(env, mainClassName);
+    job.nativeLibDir = dup_utf(env, nativeLibDir);
     job.mainArgs = dup_array(env, mainArgs, &job.argCount);
     job.classpath = dup_array(env, classpath, &job.cpCount);
     job.vmRc = -1;

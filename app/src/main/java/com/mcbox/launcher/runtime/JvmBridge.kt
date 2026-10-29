@@ -27,6 +27,7 @@ object JvmBridge {
         jvmOptions: Array<String>,
         mainClassName: String,
         mainArgs: Array<String>,
-        classpath: Array<String>
+        classpath: Array<String>,
+        nativeLibDir: String
     ): IntArray?
 }
