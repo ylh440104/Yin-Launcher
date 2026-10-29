@@ -219,10 +219,12 @@ object NativeJavaLauncher {
         // 在受限环境下频繁 deopt 会打乱 LambdaForm 自举（NoSuchMethodError 链）。
         jvmOptions += "-Xlog:exceptions=info,class+load=info,os+thread=info:file=${paths.root.absolutePath}/jvm-xlog.txt:time,level,tags"
 
-        // 让 native 把 Java 异常写到固定文件，logcat 会被系统噪音冲掉
+        // 让 native 把 Java 异常写到应用私有目录：native 在 /sdcard 上没有写权限，
+        // 但 filesDir 一定能写（同 uid）。
         try {
             android.system.Os.setenv("MCBOX_EX_DUMP",
-                File(paths.root, "java-exception.txt").absolutePath, true)
+                File(context.filesDir, "java-exception.txt").absolutePath, true)
+            onLog("[launcher] exception dump -> ${context.filesDir}/java-exception.txt")
         } catch (t: Throwable) {
             onLog("[launcher] setenv MCBOX_EX_DUMP failed: ${t.message}")
         }
