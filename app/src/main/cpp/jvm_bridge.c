@@ -289,17 +289,21 @@ static void *launch_thread(void *arg) {
                                  // pojavexec 依赖 ANativeWindow_* / EGL / GLES，
                                  // 必须先让这些系统库进全局符号表，否则它的
                                  // 函数指针为 0，Render thread 上跳空指针 SIGSEGV。
-                                 "libpojavexec.so", "libexithook.so",
                                  "libEGL.so", "libGLESv2.so", "libandroid.so",
-                                 "liblinkerhook.so", "libOSMesa.so",
-                                 // hookExec 用 dlsym(RTLD_DEFAULT, "Java_java_lang_UNIXProcess_"
-                                 // "forkAndExec") 找这个符号；它在 libjava.so 里，
-                                 // 且必须 RTLD_GLOBAL 才能被 RTLD_DEFAULT 搜到。
-                                 // 找不到时 hookClass 为 NULL，RegisterNatives(NULL,...)
-                                 // 直接跳地址 0（SEGV_MAPERR 0x0）。
-                                 "libjava.so"};
+                                 "liblinkerhook.so", "libOSMesa.so"};
+        /* 关键：libpojavexec.so 不能在这里 System.load()！
+         * 它的 JNI_OnLoad 里第一句是
+         *   if (pojav_environ->dalvikJavaVMPtr == NULL) { ... 走 Dalvik 分支 ... }
+         * 由 System.load() 触发时拿到的 vm 是 ART 的，于是它记下 ART VM 并去
+         * FindClass("org/lwjgl/glfw/CallbackBridge")，那个类在我们的 JVM 里，
+         * ART 找不到 -> bridgeClazz/bridgeClazz 相关 jmethodID 全 NULL。
+         * 之后我们的 JVM 里 GLFW 再 loadLibrary 时 JNI_OnLoad 走 else-if 分支，
+         * 而 pojav_environ->keyDownBuffer 等依然为 NULL，hookExec() 里
+         * RegisterNatives(NULL, ...) 直接跳地址 0。
+         * 因此 pojavexec 必须由 JVM 侧 System.loadLibrary("pojavexec") 触发。
+         */
         char full[1024];
-        for (int i = 0; i < 17; i++) {
+        for (int i = 0; i < 14; i++) {
             snprintf(full, sizeof(full), "%s/%s", job->nativeLibDir, natLibs[i]);
             jstring pj = (*jenv)->NewStringUTF(jenv, full);
             (*jenv)->CallStaticVoidMethod(jenv, sysC, mdLoad, pj);
