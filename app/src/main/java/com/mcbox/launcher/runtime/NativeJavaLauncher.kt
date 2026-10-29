@@ -64,7 +64,7 @@ object NativeJavaLauncher {
         onLog("[launcher] inheritsFrom = ${version.inheritsFrom}")
         onLog("[launcher] mainClass = ${version.mainClass}")
         // 打印是否包含 MC 主 jar（Fabric 靠它定位游戏）
-        val mcJarHint = classpath.firstOrNull { it.name == "1.21.11.jar" || it.name.matches(Regex("\d+\.\d+\.\d+\.jar")) }
+        val mcJarHint = classpath.firstOrNull { it.name.count { c -> c == '.' } == 2 && it.name.endsWith(".jar") }
         onLog("[launcher] MC jar in cp = ${mcJarHint?.absolutePath ?: "NONE"}")
         classpath.take(6).forEach { onLog("[launcher] cp: ${it.absolutePath}") }
 
