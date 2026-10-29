@@ -147,7 +147,9 @@ object NativeJavaLauncher {
         jvmOptions += "-Dsun.boot.library.path=${libDir.absolutePath}"
         jvmOptions += "-Djava.library.path=$libPath"
         jvmOptions += "-Xmx${memoryMb}M"
-        jvmOptions += "-Xss1m"
+        // 不要限 -Xss：MethodHandle/MethodHandles.Lookup 在 fabric 里会深层调用，
+        // 栈太小会触发 NoSuchMethodError(invokeVirtual/invokeSpecial) 链。
+        jvmOptions += "-XX:+UseSerialGC"
         jvmOptions += "-Dfile.encoding=UTF-8"
         jvmOptions += "-Duser.home=${paths.root.absolutePath}"
         jvmOptions += "-Duser.dir=${paths.root.absolutePath}"
