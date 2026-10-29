@@ -277,7 +277,11 @@ object NativeJavaLauncher {
 
         onLog("[launcher] calling ${version.mainClass}.main, gameArgs=${gameArgs.size}")
         val mainRc = try {
-            JvmBridge.nativeCallMain(version.mainClass, gameArgs.toTypedArray())
+            JvmBridge.nativeCallMain(
+                version.mainClass,
+                gameArgs.toTypedArray(),
+                classpath.map { it.absolutePath }.toTypedArray()
+            )
         } catch (t: Throwable) {
             var c: Throwable? = t
             while (c?.cause != null) c = c.cause

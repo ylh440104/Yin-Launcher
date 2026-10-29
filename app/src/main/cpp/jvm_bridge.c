@@ -13,6 +13,7 @@ typedef jint (*CreateJavaVM_t)(JavaVM **, void **, void *);
 
 static JavaVM *g_vm = NULL;
 
+/* 拿到属于 JVM 的 JNIEnv。调用线程可能是 ART 线程，必须先 Attach。 */
 static JNIEnv *get_env(void) {
     if (g_vm == NULL) return NULL;
     JNIEnv *e = NULL;
@@ -39,7 +40,7 @@ static void dump_exception(JNIEnv *e, const char *where) {
         jstring s = (jstring) (*e)->CallObjectMethod(e, t, ts);
         if (s) {
             const char *c = (*e)->GetStringUTFChars(e, s, NULL);
-            LOGE("[%s] exception: %s", where, c ? c : "?");
+            LOGE("[%s] %s", where, c ? c : "?");
             (*e)->ReleaseStringUTFChars(e, s, c);
         }
     }
@@ -83,13 +84,20 @@ Java_com_mcbox_launcher_runtime_JvmBridge_nativeCreateVm(JNIEnv *env, jclass cla
     return rc;
 }
 
+/*
+ * 用 URLClassLoader 显式加载 classpath。
+ *
+ * 纯 JNI_CreateJavaVM 不会像 java launcher 那样依据 -Djava.class.path
+ * 构造应用类加载器，所以 -cp 对这些 jar 无效，必须自己建 URLClassLoader。
+ */
 JNIEXPORT jint JNICALL
 Java_com_mcbox_launcher_runtime_JvmBridge_nativeCallMain(JNIEnv *env, jclass clazz,
-        jstring mainClassName, jobjectArray mainArgs) {
+        jstring mainClassName, jobjectArray mainArgs, jobjectArray classpath) {
     if (g_vm == NULL) return -20;
     JNIEnv *e = get_env();
     if (e == NULL) return -21;
 
+    /* main 类名：/ -> . */
     const char *name = (*env)->GetStringUTFChars(env, mainClassName, NULL);
     if (name == NULL) return -22;
     char dotted[1024];
@@ -98,36 +106,59 @@ Java_com_mcbox_launcher_runtime_JvmBridge_nativeCallMain(JNIEnv *env, jclass cla
     (*env)->ReleaseStringUTFChars(env, mainClassName, name);
     LOGI("main class = %s", dotted);
 
-    jclass mc = (*e)->FindClass(e, dotted);
-    if (mc == NULL) {
-        dump_exception(e, "FindClass");
-        LOGE("FindClass failed, retry via system ClassLoader");
-        jclass clClass = (*e)->FindClass(e, "java/lang/ClassLoader");
-        if (clClass == NULL) { dump_exception(e, "FindClass ClassLoader"); return -23; }
-        jmethodID getSys = (*e)->GetStaticMethodID(e, clClass, "getSystemClassLoader",
-                                                   "()Ljava/lang/ClassLoader;");
-        if (getSys == NULL) { dump_exception(e, "getSystemClassLoader id"); return -23; }
-        jobject cl = (*e)->CallStaticObjectMethod(e, clClass, getSys);
-        if (cl == NULL) { dump_exception(e, "getSystemClassLoader call"); return -23; }
-        jmethodID loadClass = (*e)->GetMethodID(e, clClass, "loadClass",
-                                                "(Ljava/lang/String;)Ljava/lang/Class;");
-        if (loadClass == NULL) { dump_exception(e, "loadClass id"); return -23; }
-        jstring jname = (*e)->NewStringUTF(e, dotted);
-        jclass found = (jclass) (*e)->CallObjectMethod(e, cl, loadClass, jname);
-        (*e)->DeleteLocalRef(e, jname);
-        if (found == NULL) {
-            dump_exception(e, "ClassLoader.loadClass");
-            return -26;
-        }
-        mc = found;
+    /* 建 URL[] */
+    jclass fileClass = (*e)->FindClass(e, "java/io/File");
+    if (fileClass == NULL) { dump_exception(e, "FindClass File"); return -30; }
+    jmethodID fileCtor = (*e)->GetMethodID(e, fileClass, "<init>", "(Ljava/lang/String;)V");
+    jmethodID toURI = (*e)->GetMethodID(e, fileClass, "toURI", "()Ljava/net/URI;");
+    jclass uriClass = (*e)->FindClass(e, "java/net/URI");
+    jmethodID toURL = (*e)->GetMethodID(e, uriClass, "toURL", "()Ljava/net/URL;");
+
+    int cpCount = (*env)->GetArrayLength(env, classpath);
+    jclass urlClass = (*e)->FindClass(e, "java/net/URL");
+    jobjectArray urls = (*e)->NewObjectArray(e, cpCount, urlClass, NULL);
+    for (int i = 0; i < cpCount; i++) {
+        jstring p = (jstring) (*env)->GetObjectArrayElement(env, classpath, i);
+        jobject f = (*e)->NewObject(e, fileClass, fileCtor, p);
+        jobject uri = (*e)->CallObjectMethod(e, f, toURI);
+        jobject url = (*e)->CallObjectMethod(e, uri, toURL);
+        (*e)->SetObjectArrayElement(e, urls, i, url);
+        (*e)->DeleteLocalRef(e, url);
+        (*e)->DeleteLocalRef(e, uri);
+        (*e)->DeleteLocalRef(e, f);
+        (*e)->DeleteLocalRef(e, p);
     }
+    LOGI("classpath urls = %d", cpCount);
+
+    /* 父加载器用当前线程的系统加载器，保证 JDK 类可见 */
+    jclass clClass = (*e)->FindClass(e, "java/lang/ClassLoader");
+    jmethodID getSys = (*e)->GetStaticMethodID(e, clClass, "getSystemClassLoader",
+                                               "()Ljava/lang/ClassLoader;");
+    jobject parent = (*e)->CallStaticObjectMethod(e, clClass, getSys);
+    if (parent == NULL) { dump_exception(e, "getSystemClassLoader"); return -31; }
+
+    jclass uclClass = (*e)->FindClass(e, "java/net/URLClassLoader");
+    if (uclClass == NULL) { dump_exception(e, "FindClass URLClassLoader"); return -32; }
+    jmethodID uclCtor = (*e)->GetMethodID(e, uclClass, "<init>",
+                                          "([Ljava/net/URL;Ljava/lang/ClassLoader;)V");
+    jobject loader = (*e)->NewObject(e, uclClass, uclCtor, urls, parent);
+    if (loader == NULL) { dump_exception(e, "new URLClassLoader"); return -33; }
+    LOGI("URLClassLoader created");
+
+    /* loader.loadClass(mainClass) */
+    jclass ldrClass = (*e)->FindClass(e, "java/lang/ClassLoader");
+    jmethodID loadClass = (*e)->GetMethodID(e, ldrClass, "loadClass",
+                                            "(Ljava/lang/String;)Ljava/lang/Class;");
+    jstring jname = (*e)->NewStringUTF(e, dotted);
+    jclass mc = (jclass) (*e)->CallObjectMethod(e, loader, loadClass, jname);
+    (*e)->DeleteLocalRef(e, jname);
+    if (mc == NULL) { dump_exception(e, "URLClassLoader.loadClass"); return -26; }
+    LOGI("main class loaded");
 
     jmethodID mid = (*e)->GetStaticMethodID(e, mc, "main", "([Ljava/lang/String;)V");
-    if (mid == NULL) {
-        dump_exception(e, "GetStaticMethodID(main)");
-        return -24;
-    }
+    if (mid == NULL) { dump_exception(e, "GetStaticMethodID(main)"); return -24; }
 
+    /* 参数数组 */
     int argc = (*env)->GetArrayLength(env, mainArgs);
     jclass strClass = (*e)->FindClass(e, "java/lang/String");
     jobjectArray jargs = (*e)->NewObjectArray(e, argc, strClass, NULL);

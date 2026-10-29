@@ -19,5 +19,9 @@ object JvmBridge {
     external fun nativeCreateVm(libjvmPath: String, jvmOptions: Array<String>): Int
 
     /** @return 0 成功；负数为错误码 */
-    external fun nativeCallMain(mainClassName: String, mainArgs: Array<String>): Int
+    external fun nativeCallMain(
+        mainClassName: String,
+        mainArgs: Array<String>,
+        classpath: Array<String>
+    ): Int
 }
