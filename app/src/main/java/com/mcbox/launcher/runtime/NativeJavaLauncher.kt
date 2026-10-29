@@ -219,12 +219,14 @@ object NativeJavaLauncher {
             onLog("[launcher] dup2 failed: ${t.message}")
         }
 
-        // 决定性条件：JLI_Launch 用 cwd + argv[0] 推导 java.home，cwd 必须是 JRE 根，
-        // 否则它会尝试 exec <错乱路径>/bin/java 并报 Permission denied 后直接退出。
+        // 关键：cwd 必须是游戏目录，绝不能是 JRE 根。
+        // 若 cwd 指向 JRE 根，JLI_Launch 会在那里找到 bin/java 并 exec 它，
+        // SELinux 拒绝 app 目录 exec -> "Error: trying to exec .../bin/java" 后 exit()。
+        // cwd 在别处时，JLI_Launch 转为进程内加载 libjvm.so（Pojav 的做法）。
         try {
             val rc = jreUtils.getMethod("chdir", String::class.java)
-                .invoke(null, execHome.absolutePath) as Int
-            onLog("[launcher] chdir ${execHome.absolutePath} = $rc")
+                .invoke(null, paths.root.absolutePath) as Int
+            onLog("[launcher] chdir ${paths.root.absolutePath} = $rc")
         } catch (t: Throwable) {
             onLog("[launcher] chdir failed: ${t.message}")
         }
