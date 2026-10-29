@@ -58,15 +58,48 @@ static void dump_exception(JNIEnv *e, const char *where) {
     if (!(*e)->ExceptionCheck(e)) return;
     jthrowable t = (*e)->ExceptionOccurred(e);
     (*e)->ExceptionClear(e);
+
+    /* 完整类型 + message + 最内层 cause，ClassNotFound 的真实原因常在 cause 里 */
     jclass tc = (*e)->GetObjectClass(e, t);
-    jmethodID ts = (*e)->GetMethodID(e, tc, "toString", "()Ljava/lang/String;");
-    if (ts) {
-        jstring s = (jstring) (*e)->CallObjectMethod(e, t, ts);
-        if (s) {
-            const char *c = (*e)->GetStringUTFChars(e, s, NULL);
-            LOGE("[%s] %s", where, c ? c : "?");
-            (*e)->ReleaseStringUTFChars(e, s, c);
+    jmethodID tn = (*e)->GetMethodID(e, tc, "getName", "()Ljava/lang/String;");
+    jmethodID tm = (*e)->GetMethodID(e, tc, "getMessage", "()Ljava/lang/String;");
+    if (tn) {
+        jstring n = (jstring) (*e)->CallObjectMethod(e, t, tn);
+        if (n) {
+            const char *c = (*e)->GetStringUTFChars(e, n, NULL);
+            LOGE("[%s] EX %s", where, c ? c : "?");
+            (*e)->ReleaseStringUTFChars(e, n, c);
         }
+    }
+    if (tm) {
+        jstring m = (jstring) (*e)->CallObjectMethod(e, t, tm);
+        if (m) {
+            const char *c = (*e)->GetStringUTFChars(e, m, NULL);
+            LOGE("[%s] MSG %s", where, c ? c : "?");
+            (*e)->ReleaseStringUTFChars(e, m, c);
+        }
+    }
+
+    jclass thClass = (*e)->FindClass(e, "java/lang/Throwable");
+    jmethodID getCause = (*e)->GetMethodID(e, thClass, "getCause",
+                                           "()Ljava/lang/Throwable;");
+    jobject cause = (*e)->CallObjectMethod(e, t, getCause);
+    int depth = 0;
+    while (cause != NULL && depth < 5) {
+        jclass cc = (*e)->GetObjectClass(e, cause);
+        jmethodID cn = (*e)->GetMethodID(e, cc, "getName", "()Ljava/lang/String;");
+        jmethodID cm = (*e)->GetMethodID(e, cc, "getMessage", "()Ljava/lang/String;");
+        jstring cns = cn ? (jstring) (*e)->CallObjectMethod(e, cause, cn) : NULL;
+        jstring cms = cm ? (jstring) (*e)->CallObjectMethod(e, cause, cm) : NULL;
+        const char *cnc = cns ? (*e)->GetStringUTFChars(e, cns, NULL) : NULL;
+        const char *cmc = cms ? (*e)->GetStringUTFChars(e, cms, NULL) : NULL;
+        LOGE("[%s] cause[%d] %s: %s", where, depth, cnc ? cnc : "?", cmc ? cmc : "?");
+        if (cnc) (*e)->ReleaseStringUTFChars(e, cns, cnc);
+        if (cmc) (*e)->ReleaseStringUTFChars(e, cms, cmc);
+        jobject next = (*e)->CallObjectMethod(e, cause, getCause);
+        if ((*e)->ExceptionCheck(e)) (*e)->ExceptionClear(e);
+        cause = next;
+        depth++;
     }
 }
 
