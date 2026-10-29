@@ -133,15 +133,9 @@ object NativeJavaLauncher {
         require(libjvm.exists()) { "libjvm.so 不存在: ${libjvm.absolutePath}" }
         onLog("[launcher] libjvm = ${libjvm.absolutePath}")
 
-        // 工作目录必须在游戏目录（JVM 与 MC 都按 cwd 解析相对路径）
-        try {
-            val rc = Class.forName("net.kdt.pojavlaunch.utils.JREUtils")
-                .getMethod("chdir", String::class.java)
-                .invoke(null, paths.root.absolutePath) as Int
-            onLog("[launcher] chdir ${paths.root.absolutePath} = $rc")
-        } catch (t: Throwable) {
-            onLog("[launcher] chdir failed: ${t.message}")
-        }
+        // 不用 JREUtils.chdir：它的静态初始化会 System.loadLibrary("pojavexec")，
+        // 失败则抛 ExceptionInInitializerError，再被 JNI 当成 pending exception
+        // 直接 abort。工作目录通过 -Duser.dir 指定即可。
 
         val jvmOptions = ArrayList<String>()
         jvmOptions += "-Djava.home=${execHome.absolutePath}"
