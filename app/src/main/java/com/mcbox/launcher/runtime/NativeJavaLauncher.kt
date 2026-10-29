@@ -205,11 +205,24 @@ object NativeJavaLauncher {
         try {
             val androidJna = File(nativeLibDir, "libjnidispatch.so")
             if (androidJna.exists()) {
+                // 更好：直接用 assets 里预先打好的 jna-patched.jar 覆盖掉库里的
+                // jna-5.17.0.jar。那份 jar 已经做了两件事：
+                //   1) com/sun/jna/Native.class 里的 DEFAULT_VERSION "7.0.4" -> "6.1.6"
+                //      （长度相同，不破坏常量池），于是 JNA 不再报
+                //      "incompatible JNA native library: Expected 7.0.4, Found 6.1.6"
+                //   2) com/sun/jna/{linux,android}-aarch64/libjnidispatch.so
+                //      换成 jniLibs 里的 Android 构建（依赖 libc.so 而不是 libc.so.6）
+                val assetJar = context.assets.open("jna/jna-patched.jar")
+                val patched = File(paths.root, "jna/jna-patched.jar")
+                patched.parentFile?.mkdirs()
+                assetJar.use { ins -> patched.outputStream().use { outs -> ins.copyTo(outs) } }
+                onLog("[launcher] jna patched jar -> ${patched.absolutePath} (${patched.length()} bytes)")
                 val jnaJars = paths.libraries.walkTopDown()
                     .filter { it.isFile && it.name.startsWith("jna-") && it.name.endsWith(".jar") }
                     .toList()
                 for (jarFile in jnaJars) {
-                    patchJnaJar(jarFile, androidJna, onLog)
+                    patched.copyTo(jarFile, overwrite = true)
+                    onLog("[launcher] jna jar replaced: ${jarFile.name}")
                 }
             }
         } catch (t: Throwable) {
