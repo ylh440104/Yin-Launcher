@@ -170,9 +170,6 @@ object GameBridge {
                 activity.onGameExit(-2)
                 activity.appendStatus("启动失败: ${t.message}")
             }
-        }.apply {
-            name = "mcbox-jvm"
-            start()
         }
     }
 
