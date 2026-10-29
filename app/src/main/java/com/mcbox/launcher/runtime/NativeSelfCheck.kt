@@ -45,7 +45,7 @@ object NativeSelfCheck {
 
         val callbackOk = try {
             CallbackBridge.sendUpdateWindowSize(1, 1)
-            CallbackBridge.nativeSetInputReady(false)
+            CallbackBridge.sendUpdateWindowSize(1, 1)
             true
         } catch (t: Throwable) {
             messages.add("回调桥失败: ${t.javaClass.simpleName}")
