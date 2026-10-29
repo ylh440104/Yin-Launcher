@@ -264,9 +264,14 @@ static void *launch_thread(void *arg) {
                                  "liblwjgl_stb.so", "liblwjgl_tinyfd.so",
                                  "liblwjgl_nanovg.so", "libopenal.so",
                                  "libgl4es_114.so", "libfreetype.so",
-                                 "libjnidispatch.so"};
+                                 "libjnidispatch.so",
+                                 // pojavexec 依赖 ANativeWindow_* / EGL / GLES，
+                                 // 必须先让这些系统库进全局符号表，否则它的
+                                 // 函数指针为 0，Render thread 上跳空指针 SIGSEGV。
+                                 "libpojavexec.so", "libexithook.so",
+                                 "libEGL.so", "libGLESv2.so", "libandroid.so"};
         char full[1024];
-        for (int i = 0; i < 9; i++) {
+        for (int i = 0; i < 14; i++) {
             snprintf(full, sizeof(full), "%s/%s", job->nativeLibDir, natLibs[i]);
             jstring pj = (*jenv)->NewStringUTF(jenv, full);
             (*jenv)->CallStaticVoidMethod(jenv, sysC, mdLoad, pj);
