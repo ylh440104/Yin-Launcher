@@ -276,13 +276,10 @@ object NativeJavaLauncher {
         jvmOptions += "-XX:+UseSerialGC"
         // 这个 Android 版 JRE 的 JIT（C1 与 C2 都一样）会在 VM Thread 上触发
         // tagged-pointer abort（logcat: Pointer tag ... was truncated）。
-        // 注意：这个 Android 定制 JRE 没有 -XX:UseTBI / UseTaggedPointers
-        // （实测 Unrecognized VM option，会让 JNI_CreateJavaVM 直接返回 -6）。
-        // 保留 C1-only：比 -Xint 快得多，且 C1 不触发 C2 的 pointer-tag 检查。
-        jvmOptions += "-XX:+UnlockExperimentalVMOptions"
-        jvmOptions += "-XX:TieredStopAtLevel=1"
-        jvmOptions += "-XX:-UseCompressedOops"
-        jvmOptions += "-XX:-UseCompressedClassPointers"
+        // 不再限制 JIT。native 侧 launch_thread 已按 Zalith Launcher 2 的做法
+        // 把 SIGSEGV 设成 SIG_IGN 并重置全部信号处理器，tagged-pointer 的
+        // SIGABRT 不会再直接杀死进程，可以放心用默认的分层编译。
+        // 注意：这个 JRE 没有 UseTBI / UseTaggedPointers 选项（会 rc=-6）。
         // 受限环境下 JIT 生成的方法句柄调用点可能解析失败（NoSuchMethodError
         // invokeVirtual/invokeSpecial 链），先只跑 C1 保证正确性。
         jvmOptions += "-Dfile.encoding=UTF-8"

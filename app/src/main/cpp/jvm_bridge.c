@@ -5,6 +5,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <pthread.h>
+#include <signal.h>
 #include <stdarg.h>
 #include <android/log.h>
 
@@ -145,8 +146,24 @@ Java_com_mcbox_launcher_runtime_JvmBridge_nativeChdir(JNIEnv *env, jclass clazz,
     return rc;
 }
 
+/* 来自 Zalith Launcher 2 的 jre_launcher.c：
+ * Android 的 tagged-pointer 检查会在 JVM 里抛 SIGABRT（"Pointer tag ... was
+ * truncated"）。把 SIGHUP..NSIG 全部重置，并单独把 SIGSEGV 设成 SIG_IGN，
+ * 这样 JIT 生成代码里的指针标记截断不会再直接终止进程。
+ * 这是 Zalith 能在同一台设备上正常跑起来的关键差异之一。 */
+static void reset_signal_handlers(void) {
+    struct sigaction clean_sa;
+    memset(&clean_sa, 0, sizeof(struct sigaction));
+    for (int sigid = SIGHUP; sigid < NSIG; sigid++) {
+        if (sigid == SIGSEGV) clean_sa.sa_handler = SIG_IGN;
+        else clean_sa.sa_handler = SIG_DFL;
+        sigaction(sigid, &clean_sa, NULL);
+    }
+}
+
 static void *launch_thread(void *arg) {
     LaunchJob *job = (LaunchJob *) arg;
+    reset_signal_handlers();
 
     /* libpojavexec 的 hookExec() 用
      *   dlsym(RTLD_DEFAULT, "Java_java_lang_UNIXProcess_forkAndExec")
