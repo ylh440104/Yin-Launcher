@@ -18,6 +18,7 @@ class GameSurfaceView @JvmOverloads constructor(
 
     interface Listener {
         fun onSurfaceReady(holder: SurfaceHolder)
+        fun onSurfaceChanged(holder: SurfaceHolder, width: Int, height: Int) {}
         fun onSurfaceDestroyed()
     }
 
@@ -52,6 +53,7 @@ class GameSurfaceView @JvmOverloads constructor(
     override fun surfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) {
         cursorX = width / 2f
         cursorY = height / 2f
+        listener?.onSurfaceChanged(holder, width, height)
     }
 
     override fun surfaceDestroyed(holder: SurfaceHolder) {

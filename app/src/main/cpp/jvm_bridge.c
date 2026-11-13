@@ -161,6 +161,15 @@ static void reset_signal_handlers(void) {
     }
 }
 
+static void write_ready_flag(void) {
+    const char *path = getenv("MCBOX_READY_FLAG");
+    if (path == NULL) return;
+    FILE *f = fopen(path, "w");
+    if (f == NULL) return;
+    fputs("ready\n", f);
+    fclose(f);
+}
+
 static void *launch_thread(void *arg) {
     LaunchJob *job = (LaunchJob *) arg;
     reset_signal_handlers();
@@ -224,7 +233,7 @@ static void *launch_thread(void *arg) {
     vargs.version = JNI_VERSION_1_6;
     vargs.nOptions = job->optionCount;
     vargs.options = opts;
-    vargs.ignoreUnrecognized = JNI_FALSE;
+    vargs.ignoreUnrecognized = JNI_TRUE;
 
     JNIEnv *jenv = NULL;
     job->vmRc = create(&g_vm, (void **) &jenv, &vargs);
@@ -289,7 +298,38 @@ static void *launch_thread(void *arg) {
         (*jenv)->DeleteLocalRef(jenv, s);
     }
 
+    /* 在游戏 JVM 里加载一次 libpojavexec.so：HotSpot 有独立的已加载库表，
+     * System.load 会再次执行 JNI_OnLoad(vm=HotSpot)，走 "dalvikJavaVMPtr != vm"
+     * 分支保存 runtimeJavaVMPtr、hookExec()、installLwjglDlopenHook()。
+     * 裸 dlopen 不触发 JNI_OnLoad，必须在这里用 System.load。 */
+    {
+        jclass sysLoad = (*jenv)->FindClass(jenv, "java/lang/System");
+        if (sysLoad != NULL) {
+            jmethodID mdLoad = (*jenv)->GetStaticMethodID(jenv, sysLoad, "load",
+                    "(Ljava/lang/String;)V");
+            char pojavPath[1024];
+            snprintf(pojavPath, sizeof(pojavPath), "%s/libpojavexec.so", job->nativeLibDir);
+            jstring jp = (*jenv)->NewStringUTF(jenv, pojavPath);
+            if (mdLoad != NULL) {
+                (*jenv)->CallStaticVoidMethod(jenv, sysLoad, mdLoad, jp);
+                if ((*jenv)->ExceptionCheck(jenv)) {
+                    (*jenv)->ExceptionClear(jenv);
+                    LOGE("load libpojavexec in game JVM failed: %s", pojavPath);
+                    dump_fmt("[jvm] load libpojavexec failed: %s", pojavPath);
+                } else {
+                    LOGI("libpojavexec loaded in game JVM: %s", pojavPath);
+                    dump_fmt("[jvm] libpojavexec loaded in game JVM");
+                }
+            }
+            (*jenv)->DeleteLocalRef(jenv, jp);
+        } else {
+            if ((*jenv)->ExceptionCheck(jenv)) (*jenv)->ExceptionClear(jenv);
+            LOGE("FindClass java/lang/System failed");
+        }
+    }
+
     LOGI("invoking %s.main (%d args)", job->mainClass, job->argCount);
+    write_ready_flag();
     /* 关键：JVM 不是由 Android Runtime 创建的，classloader.findLibrary 拿不到
      * nativeLibraryDir，System.loadLibrary("lwjgl") 会失败。
      * 这里用绝对路径把所有 LWJGL native 预加载进进程，之后

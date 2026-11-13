@@ -41,13 +41,6 @@ object GameBridge {
         val width = widthPx.coerceAtLeast(1)
         val height = heightPx.coerceAtLeast(1)
 
-        val runtimeManager = RuntimeManager(activity, paths.runtimes)
-        val runtime = runtimeManager.findForMajor(javaMajor)
-        if (runtime == null) {
-            activity.onGameExit(-3)
-            return
-        }
-
         val instanceDir = File(paths.instances, instance.id).apply { mkdirs() }
         val account = resolveAccount(settings, instance.accountId)
 
@@ -60,7 +53,24 @@ object GameBridge {
         handlerThread = android.os.HandlerThread("mcbox-launch").apply { start() }
         android.os.Handler(handlerThread.looper).post {
             try {
-                CallbackBridge.sendUpdateWindowSize(width, height)
+                try {
+                    CallbackBridge.sendUpdateWindowSize(width, height)
+                } catch (t: Throwable) {
+                    android.util.Log.w("GameBridge", "sendUpdateWindowSize failed: ${t.message}")
+                }
+                val runtimeManager = RuntimeManager(activity, paths.runtimes)
+                var runtime = runtimeManager.findForMajor(javaMajor)
+                if (runtime == null) {
+                    activity.appendStatus("安装 Java 运行时 jre-21")
+                    runtime = runtimeManager.installFromAssets(
+                        name = "jre-21",
+                        universalAsset = "runtime/jre21/universal.tar.xz",
+                        binAsset = "runtime/jre21/bin-arm64.tar.xz"
+                    ) { message, progress ->
+                        activity.runOnUiThread { activity.appendStatus("$message $progress%") }
+                    }
+                }
+                if (runtime == null) throw IllegalStateException("Java 运行时 jre-21 安装失败")
                 activity.appendStatus("解析版本 ${instance.versionId}")
                 val resolver = VersionResolver(paths)
                 val merged = resolver.loadMerged(instance.versionId)
@@ -102,6 +112,13 @@ object GameBridge {
                 )
 
 
+                val versionJvmArgs = try {
+                    ArgumentBuilder(platform).buildJvmArgs(config).filter {
+                        it.startsWith("-D") || it.startsWith("-X") || it.startsWith("--add")
+                    }
+                } catch (t: Throwable) {
+                    emptyList()
+                }
                 activity.appendStatus("启动 JVM (子进程模式)")
                 exited.set(false)
                 // 固定文件名：每次都覆盖，避免时间戳文件堆积后找不到最新一份
@@ -145,6 +162,8 @@ object GameBridge {
                         memoryMb = memory,
                         width = width,
                         height = height,
+                        extraJvmArgs = versionJvmArgs,
+                        onJvmReady = { activity.onGameReady() },
                         onLog = ::writeLog
                     )
                 } finally {

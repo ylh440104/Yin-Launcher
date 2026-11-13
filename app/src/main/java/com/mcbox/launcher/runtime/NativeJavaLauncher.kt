@@ -35,6 +35,8 @@ object NativeJavaLauncher {
         memoryMb: Int,
         width: Int,
         height: Int,
+        extraJvmArgs: List<String> = emptyList(),
+        onJvmReady: () -> Unit = {},
         onLog: (String) -> Unit
     ): Result {
         val javaBin = File(jreHome, "bin/java")
@@ -96,6 +98,16 @@ object NativeJavaLauncher {
         args += "-Dminecraft.launcher.brand=mcbox"
         args += "-Dminecraft.launcher.version=1.0"
         args += "-Dlog4j2.formatMsgNoLookups=true"
+        args += "-Dglfwstub.windowWidth=$width"
+        args += "-Dglfwstub.windowHeight=$height"
+        args += "-Dglfwstub.initEgl=false"
+        args += "-Djdk.lang.Process.launchMechanism=FORK"
+        args += "-Dfml.earlyprogresswindow=false"
+        args += "-Dloader.disable_forked_guis=true"
+        args += "-Dpojav.path.minecraft=${paths.root.absolutePath}"
+        args += "-Dpojav.path.private.account=${File(paths.root, "accounts").absolutePath}"
+        args += "-Dext.net.resolvPath=${File(paths.root, "resolv.conf").absolutePath}"
+        args += "-Djava.awt.headless=true"
         args += "-cp"
         args += classpath.joinToString(":") { it.absolutePath }
         args += version.mainClass
@@ -238,24 +250,32 @@ object NativeJavaLauncher {
         // 保持默认的 System.loadLibrary("jnidispatch") 命中已加载库。
         jvmOptions += "-Djna.nosys=false"
         // gl4es：OpenGL 2.x -> OpenGL ES 2/3 转译（Pojav 的默认渲染后端）
-        jvmOptions += "-DLIBGL_ES=2"
+        jvmOptions += "-DLIBGL_ES=3"
         jvmOptions += "-Dorg.lwjgl.opengl.libname=libgl4es_114.so"
+        jvmOptions += "-Dorg.lwjgl.openal.libname=$nativeLibDir/libopenal.so"
         onLog("[launcher] nativeLibDir = $nativeLibDir")
         // JNA / 各类库需要可写临时目录；Android 没有 /tmp，必须显式指定。
         val tmpDir = File(paths.root, "temp").apply { mkdirs() }
         jvmOptions += "-Djna.tmpdir=${tmpDir.absolutePath}"
         jvmOptions += "-Djava.io.tmpdir=${tmpDir.absolutePath}"
-        jvmOptions += "-Djava.awt.headless=false"
+        jvmOptions += "-Djava.awt.headless=true"
         onLog("[launcher] tmpDir = ${tmpDir.absolutePath}")
 
         // Pojav 的 Android 版 LWJGL 从环境变量 POJAV_NATIVEDIR 找 so，
         // 不是 org.lwjgl.librarypath。缺失时 GLFW.<clinit> 直接 UnsatisfiedLinkError。
         try {
             Os.setenv("POJAV_NATIVEDIR", nativeLibDir, true)
-            Os.setenv("POJAV_RENDERER", "opengles", true)
+            Os.setenv("POJAV_RENDERER", "opengles3", true)
             Os.setenv("POJAV_LOAD_TURNIP", "0", true)
-            Os.setenv("LIBGL_ES", "2", true)
+            Os.setenv("LIBGL_ES", "3", true)
             Os.setenv("LIBGL_MIPMAP", "3", true)
+            Os.setenv("LIBGL_NOERROR", "1", true)
+            Os.setenv("LIBGL_NOINTOVLHACK", "1", true)
+            Os.setenv("LIBGL_NORMALIZE", "1", true)
+            Os.setenv("AWTSTUB_WIDTH", width.toString(), true)
+            Os.setenv("AWTSTUB_HEIGHT", height.toString(), true)
+            Os.setenv("MESA_GLSL_CACHE_DIR",
+                File(paths.root, "cache").apply { mkdirs() }.absolutePath, true)
             Os.setenv("LD_LIBRARY_PATH",
                 nativeLibDir + ":" + libDir.absolutePath + ":" + serverDir.absolutePath +
                         ":/system/lib64:/vendor/lib64", true)
@@ -294,10 +314,15 @@ object NativeJavaLauncher {
                 jvmOptions += a
             }
         }
+        for (a in extraJvmArgs) {
+            if (a.startsWith("-Djava.class.path") || a.startsWith("-Djava.library.path")) continue
+            if (a.startsWith("-Xmx") || a.startsWith("-Xms")) continue
+            jvmOptions += a
+        }
         // JVM 自身日志写盘，排查崩溃不受 System.out 影响
         // 只保留轻量诊断标签：all=info 会打开 verification/dependencies 等重量级日志，
         // 在受限环境下频繁 deopt 会打乱 LambdaForm 自举（NoSuchMethodError 链）。
-        jvmOptions += "-Xlog:exceptions=info,class+load=info,os+thread=info:file=${paths.root.absolutePath}/jvm-xlog.txt:time,level,tags"
+        jvmOptions += "-Xlog:exceptions=info:file=${paths.root.absolutePath}/jvm-xlog.txt:time,level,tags"
 
         // 让 native 把 Java 异常写到应用私有目录：native 在 /sdcard 上没有写权限，
         // 但 filesDir 一定能写（同 uid）。
@@ -309,6 +334,33 @@ object NativeJavaLauncher {
             onLog("[launcher] setenv MCBOX_EX_DUMP failed: ${t.message}")
         }
 
+        val readyFlag = File(context.cacheDir, "jvm-ready.flag")
+        runCatching { if (readyFlag.exists()) readyFlag.delete() }
+        try {
+            android.system.Os.setenv("MCBOX_READY_FLAG", readyFlag.absolutePath, true)
+            onLog("[launcher] ready flag -> ${readyFlag.absolutePath}")
+        } catch (t: Throwable) {
+            onLog("[launcher] setenv MCBOX_READY_FLAG failed: ${t.message}")
+        }
+        Thread {
+            val deadline = System.currentTimeMillis() + 300_000L
+            while (System.currentTimeMillis() < deadline) {
+                if (readyFlag.exists()) {
+                    readyFlag.delete()
+                    onJvmReady()
+                    return@Thread
+                }
+                try {
+                    Thread.sleep(300L)
+                } catch (t: InterruptedException) {
+                    return@Thread
+                }
+            }
+        }.apply {
+            name = "mcbox-jvm-ready"
+            isDaemon = true
+            start()
+        }
         onLog("[launcher] creating JVM (dedicated thread), options=${jvmOptions.size}")
         val gameArgs2 = ArrayList(args.drop(args.indexOf(version.mainClass) + 1))
         onLog("[launcher] gameArgs (${gameArgs2.size}): ${gameArgs2.joinToString(" ")}")

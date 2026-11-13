@@ -28,6 +28,7 @@ class GameActivity : AppCompatActivity(), GameSurfaceView.Listener {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        setupNativeEnv()
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         window.setFlags(
             WindowManager.LayoutParams.FLAG_FULLSCREEN,
@@ -66,6 +67,30 @@ class GameActivity : AppCompatActivity(), GameSurfaceView.Listener {
         setContentView(root)
     }
 
+    private fun setupNativeEnv() {
+        val metrics = resources.displayMetrics
+        val root = com.mcbox.launcher.data.SettingsStore(this).paths().root
+        val env = mapOf(
+            "POJAV_NATIVEDIR" to applicationInfo.nativeLibraryDir,
+            "POJAV_RENDERER" to "opengles3",
+            "LIBGL_ES" to "3",
+            "LIBGL_MIPMAP" to "3",
+            "LIBGL_NOERROR" to "1",
+            "LIBGL_NOINTOVLHACK" to "1",
+            "LIBGL_NORMALIZE" to "1",
+            "AWTSTUB_WIDTH" to metrics.widthPixels.toString(),
+            "AWTSTUB_HEIGHT" to metrics.heightPixels.toString(),
+            "MESA_GLSL_CACHE_DIR" to java.io.File(root, "cache").apply { mkdirs() }.absolutePath
+        )
+        for ((key, value) in env) {
+            try {
+                android.system.Os.setenv(key, value, true)
+            } catch (t: Throwable) {
+                android.util.Log.w("McBox", "setenv $key failed: ${t.message}")
+            }
+        }
+    }
+
     private fun hideSystemBars() {
         window.decorView.systemUiVisibility = (
             View.SYSTEM_UI_FLAG_LAYOUT_STABLE
@@ -78,13 +103,27 @@ class GameActivity : AppCompatActivity(), GameSurfaceView.Listener {
     }
 
     override fun onSurfaceReady(holder: SurfaceHolder) {
-        val width = surfaceView.width.coerceAtLeast(1)
-        val height = surfaceView.height.coerceAtLeast(1)
         if (launched) return
         launched = true
-        // 子进程模式不经过 Pojav 的 AWT 桥接，surface 仅用于覆盖层显示。
+        val frame = holder.surfaceFrame
+        val width = frame.width().takeIf { it > 1 } ?: surfaceView.width.coerceAtLeast(1)
+        val height = frame.height().takeIf { it > 1 } ?: surfaceView.height.coerceAtLeast(1)
         statusView.visibility = View.GONE
+        try {
+            CallbackBridge.sendUpdateWindowSize(width, height)
+        } catch (t: Throwable) {
+            android.util.Log.w("McBox", "sendUpdateWindowSize failed: ${t.message}")
+        }
+        net.kdt.pojavlaunch.utils.JREUtils.safeSetupBridgeWindow(holder.surface)
         GameBridge.start(this, intent, holder, width, height)
+    }
+
+    override fun onSurfaceChanged(holder: SurfaceHolder, width: Int, height: Int) {
+        try {
+            CallbackBridge.sendUpdateWindowSize(width.coerceAtLeast(1), height.coerceAtLeast(1))
+        } catch (t: Throwable) {
+            android.util.Log.w("McBox", "sendUpdateWindowSize failed: ${t.message}")
+        }
     }
 
     override fun onSurfaceDestroyed() {
