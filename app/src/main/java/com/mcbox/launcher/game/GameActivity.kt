@@ -114,8 +114,20 @@ class GameActivity : AppCompatActivity(), GameSurfaceView.Listener {
         } catch (t: Throwable) {
             android.util.Log.w("McBox", "sendUpdateWindowSize failed: ${t.message}")
         }
-        net.kdt.pojavlaunch.utils.JREUtils.safeSetupBridgeWindow(holder.surface)
+        setupBridgeWindow(holder.surface)
         GameBridge.start(this, intent, holder, width, height)
+    }
+
+    private fun setupBridgeWindow(surface: android.view.Surface?) {
+        if (surface == null) return
+        try {
+            val cls = Class.forName("net.kdt.pojavlaunch.utils.JREUtils")
+            val method = cls.getMethod("safeSetupBridgeWindow", Any::class.java)
+            val ok = method.invoke(null, surface)
+            android.util.Log.i("McBox", "setupBridgeWindow -> $ok")
+        } catch (t: Throwable) {
+            android.util.Log.w("McBox", "setupBridgeWindow failed: ${t.message}")
+        }
     }
 
     override fun onSurfaceChanged(holder: SurfaceHolder, width: Int, height: Int) {
